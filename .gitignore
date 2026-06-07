@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT
+
+# zig build artifacts
+.zig-cache/
+zig-out/
+
+# Package Files
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
