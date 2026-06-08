@@ -128,7 +128,7 @@ pub const Timer = struct {
         comptime MsgT: type,
     ) struct { t: Timer, cmd: ?app.Cmd(MsgT) } {
         if (!self.running_()) return .{ .t = self, .cmd = null };
-        if (msg.id != 0 and msg.id != self.id) return .{ .t = self, .cmd = null };
+        if (msg.id != self.id) return .{ .t = self, .cmd = null };
         if (msg.tag != 0 and msg.tag != self.tag) return .{ .t = self, .cmd = null };
 
         var t = self;
@@ -140,7 +140,7 @@ pub const Timer = struct {
     }
 
     pub fn updateStartStop(self: Timer, msg: StartStopMsg) Timer {
-        if (msg.id != 0 and msg.id != self.id) return self;
+        if (msg.id != self.id) return self;
         var t = self;
         t.running = msg.running;
         return t;

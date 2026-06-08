@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: MIT
+//
+// build.zig.zon -- fern-core package manifest (Zig 0.16.0 package format)
+//
+// This file is required for `zig fetch --save` to work and for users to add
+// fern-core as a dependency in their own build.zig.zon files.
+//
+// To consume fern-core in your project:
+//   1.  Run:  zig fetch --save https://github.com/fern-tui/fern-core/archive/<commit-or-tag>.tar.gz
+//   2.  In your build.zig, pull in the modules you need via b.dependency("fern_core", ...).
+//
+// How to hash a new release:
+//   zig fetch https://github.com/fern-tui/fern-core/archive/<tag>.tar.gz
+//   # Copy the printed hash into the .hash field of the .dependencies entry.
+
+.{
+    // Package name used in error messages and as the default dependency key.
+    .name = .fern_core,
+
+    // Semantic version.  Increment on every tagged release.
+    //   MAJOR -- breaking public API change
+    //   MINOR -- new feature, backward-compatible
+    //   PATCH -- bug fix, backward-compatible
+    .version = "0.1.5",
+
+    // Minimum Zig version required to build this package.
+    // Zig 0.16.0 is required -- see README.
+    .minimum_zig_version = "0.16.0",
+
+    // SPDX license identifier.
+    // Must match the LICENSE file in the repo root.
+    .license = .MIT,
+
+    // Fingerprint uniquely identifies this package across the ecosystem.
+    // Generate with: zig fetch <url>  (the tool prints the hash for you).
+    // Leave as a placeholder until the first tagged release is published.
+    .fingerprint = 0xe8f8ef3e9f78dc45,
+
+    // ---------------------------------------------------------------------------
+    // Dependencies
+    // ---------------------------------------------------------------------------
+    //
+    // fern-core has no external Zig package dependencies -- everything is in
+    // the standard library.  Third-party C libraries would go here; none today.
+    //
+    // Example for adding a future dependency:
+    //
+    //   .dependencies = .{
+    //       .some_lib = .{
+    //           .url = "https://example.com/some_lib-v1.0.0.tar.gz",
+    //           .hash = "12200000...",
+    //       },
+    //   },
+
+    .dependencies = .{},
+
+    // ---------------------------------------------------------------------------
+    // Paths included in the published tarball
+    // ---------------------------------------------------------------------------
+    //
+    // Only files listed here are shipped.  Docs, CI config, and build artifacts
+    // are excluded to keep the download small.
+    //
+    // Rules:
+    //   - Always include "build.zig" and "build.zig.zon".
+    //   - Always include "LICENSE" (required for MIT compliance).
+    //   - Include all source files under "src/" -- consumers compile from source.
+    //   - Omit ".github/", "zig-out/", ".zig-cache/".
+    //   - Examples are included so users can run `zig build example-*` from
+    //     the fetched package; remove them if you want a leaner tarball.
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "README.md",
+        "docs/",
+        "src/",
+        "examples/",
+    },
+}
