@@ -1,20 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-// build.zig -- fern library build script (Zig 0.16.0)
+// platforms:
+// linux: full (libc-free)
+// macos: needs libc
+// windows: unsupported (maybe v3)
 //
-// Platform support:
-//   Linux   -- fully supported; std.os.linux syscalls, libc-free
-//   macOS   -- supported; sys.zig uses std.c.*, so linkLibC() is added
-//   Windows -- compile-time error in sys.zig; planned for v3, do not wait up
-//
-// Steps:
-//   zig build                   -- build and install all libraries
-//   zig build test              -- run all per-module unit tests
-//   zig build test-app          -- run only the app/ module tests
-//   zig build test-widget       -- run only the widget/ module tests
-//   zig build example-spinner   -- run examples/01_spinner
-//   zig build example-progress  -- run examples/02_progress
-//   zig build example-list      -- run examples/03_list
+// commands:
+// zig build                - build all
+// zig build test           - run all tests
+// zig build test-app       - test app module
+// zig build test-widget    - test widget module
+// zig build example- - run examples (spinner, progress, list)
 
 const std = @import("std");
 
@@ -22,15 +18,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // sys.zig calls into std.c.* (extern "c") on macOS because Apple
-    // decided the raw syscall ABI is not for users.  On Linux, sys.zig
-    // speaks to the kernel directly via std.os.linux and skips libc
-    // entirely.  linkLibC() is harmless there and covers any std.posix
-    // path that silently routes through libc anyway.
+    // macos needs libc since apple hides raw syscalls.
+    // linux talks directly to the kernel and skips libc.
+    // leaving linkLibC() on is fine for both anyway.
     const needs_libc: bool = target.result.os.tag == .macos or
         target.result.os.tag == .linux;
 
-    // ---- libraries ----------------------------------------------------------
+    // libraries >>
 
     const ansi_lib = b.addLibrary(.{
         .name = "fern_ansi",
@@ -54,7 +48,7 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(anim_lib);
 
-    // ansi_mod: the popular kid -- style, zone, and app all depend on it.
+    // ansi_mod: used by style, zone, and app
     const ansi_mod = ansi_lib.root_module;
 
     const style_mod = b.createModule(.{
@@ -85,12 +79,10 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(zone_lib);
 
-    // ---- app module ---------------------------------------------------------
+    // app module >>
     //
-    // app/ has four files: root.zig, cmd.zig, render.zig, app.zig.
-    // sys.zig is internal; app.zig @imports it by relative path and it
-    // never surfaces as a named module -- the Zig module system resolves
-    // sibling @import("sys.zig") by path, no addImport("sys", ...) needed.
+    // app/ files: root, cmd, render, app.
+    // sys.zig is internal. app.zig imports it by path, so no addImport is needed.
 
     const app_mod = b.createModule(.{
         .root_source_file = b.path("src/app/root.zig"),
@@ -109,11 +101,11 @@ pub fn build(b: *std.Build) void {
     if (needs_libc) app_lib.root_module.link_libc = true;
     b.installArtifact(app_lib);
 
-    // ---- widget module ------------------------------------------------------
+    // widget module >>
     //
-    // widget/ depends on: fern_ansi, fern_style, fern_app, fern_anim.
-    // Pure Zig; no platform syscalls, no libc, no drama.
-    // widget/key.zig is internal, resolved as a relative sibling @import.
+    // widget dependencies: fern_ansi, fern_style, fern_app, fern_anim.
+    // pure zig, no libc or syscalls.
+    // key.zig is internal, imported by path.
 
     const widget_mod = b.createModule(.{
         .root_source_file = b.path("src/widget/root.zig"),
@@ -132,14 +124,13 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(widget_lib);
 
-    // ---- tests --------------------------------------------------------------
+    // tests >>
     //
-    // One test binary per source file so you know exactly which module
-    // ruined your day.
+    // one test binary per file to see which module failed.
 
     const test_step = b.step("test", "Run all fern tests");
 
-    // --- ansi and anim: standalone; no external imports ----------------------
+    // ansi and anim: standalone, no external imports
 
     const ansi_sources: []const []const u8 = &.{
         "src/ansi/color.zig",
@@ -156,7 +147,7 @@ pub fn build(b: *std.Build) void {
         "src/anim/throw.zig",
     };
 
-    // root.zig is a re-export shim with no test blocks; skip it.
+    // root.zig is a re-export shim with no tests. skip it.
     inline for (.{ ansi_sources, anim_sources }) |group| {
         for (group) |src| {
             const unit = b.addTest(.{
@@ -170,7 +161,7 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    // --- style and zone: each needs fern_ansi --------------------------------
+    // style and zone both need fern_ansi
 
     const ansi_dep_sources: []const []const u8 = &.{
         "src/style/border.zig",
@@ -191,21 +182,18 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(unit).step);
     }
 
-    // --- app/: cmd, render, sys, app -----------------------------------------
+    // app/: cmd, render, sys, app >>
     //
-    // sys.zig is tested in isolation so its syscall failures are clearly
-    // distinguishable from the application logic sitting above it.
+    // test sys.zig by itself to separate syscall errors from app bugs.
     //
-    // Import map:
-    //   cmd.zig    -- std only
-    //   render.zig -- fern_ansi
-    //   sys.zig    -- std only (std.c / std.os.linux); linkLibC() on macOS
-    //   app.zig    -- fern_ansi + fern_anim; sibling path resolution for
-    //                 cmd.zig, render.zig, sys.zig
+    // imports:
+    // cmd: std
+    // render: fern_ansi
+    // sys: std (needs libc on mac)
+    // app: fern_ansi, fern_anim, and local files by path
 
     const test_app_step = b.step("test-app", "Run only the app/ module tests");
 
-    // cmd.zig: std only, no imports.
     {
         const unit = b.addTest(.{
             .root_module = b.createModule(.{
@@ -248,7 +236,7 @@ pub fn build(b: *std.Build) void {
         test_app_step.dependOn(&run.step);
     }
 
-    // app.zig: fern_ansi + fern_anim; cmd/render/sys resolved as siblings.
+    // app.zig: fern_ansi + fern_anim; cmd/render/sys resolved.....
     {
         const unit_mod = b.createModule(.{
             .root_source_file = b.path("src/app/app.zig"),
@@ -264,17 +252,17 @@ pub fn build(b: *std.Build) void {
         test_app_step.dependOn(&run.step);
     }
 
-    // --- widget/: one test binary per file -----------------------------------
+    // widget/: one test binary per file >>
     //
-    // Import map (key.zig siblings resolved by relative @import, not listed):
-    //   key.zig        -- fern_ansi
-    //   spinner.zig    -- fern_ansi, fern_style, fern_app
-    //   progress.zig   -- fern_ansi, fern_style, fern_app, fern_anim
-    //   timer.zig      -- fern_app
-    //   stopwatch.zig  -- fern_app
-    //   paginator.zig  -- fern_ansi, sibling key.zig
-    //   viewport.zig   -- fern_ansi, fern_style, sibling key.zig
-    //   textinput.zig  -- fern_ansi, fern_style, sibling key.zig
+    // imports (locals by path):
+    // key: fern_ansi
+    // spinner: fern_ansi, fern_style, fern_app
+    // progress: fern_ansi, fern_style, fern_app, fern_anim
+    // timer: fern_app
+    // stopwatch: fern_app
+    // paginator: fern_ansi, key
+    // viewport: fern_ansi, fern_style, key
+    // textinput: fern_ansi, fern_style, key
 
     const test_widget_step = b.step("test-widget", "Run only the widget/ module tests");
 
@@ -353,7 +341,7 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
-    // paginator.zig: fern_ansi; key.zig resolved as relative sibling.
+    // paginator.zig: fern_ansi; key.zig resolved
     {
         const unit_mod = b.createModule(.{
             .root_source_file = b.path("src/widget/paginator.zig"),
@@ -367,7 +355,7 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
-    // viewport.zig: fern_ansi, fern_style; key.zig resolved as sibling.
+    // viewport.zig: fern_ansi, fern_style; key.zig resolved
     {
         const unit_mod = b.createModule(.{
             .root_source_file = b.path("src/widget/viewport.zig"),
@@ -382,7 +370,7 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
-    // textinput.zig: fern_ansi, fern_style; key.zig resolved as sibling.
+    // textinput.zig: fern_ansi, fern_style; key.zig resolved
     {
         const unit_mod = b.createModule(.{
             .root_source_file = b.path("src/widget/textinput.zig"),
@@ -397,9 +385,9 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
-    // ---- examples -----------------------------------------------------------
+    // examples >>
 
-    // --- spinner example -----------------------------------------------------
+    // spinner example >
     const spinner_exe = b.addExecutable(.{
         .name = "spinner",
         .root_module = b.createModule(.{
@@ -420,9 +408,8 @@ pub fn build(b: *std.Build) void {
     const example_spinner_step = b.step("example-spinner", "Run examples/01_spinner");
     example_spinner_step.dependOn(&run_spinner.step);
 
-    // Museum exhibit: static stripped binary approach.  Sheds a few KB at
-    // the cost of an extra install step.  Preserved for posterity and the
-    // three people who will inevitably ask why it was removed.
+    // static stripped binary approach. Sheds a few KB at
+    // the cost of an extra install step.
     //
     //     const spinner_exe = b.addExecutable(.{
     //         .name = "spinner",
@@ -455,7 +442,7 @@ pub fn build(b: *std.Build) void {
     //     example_spinner_step.dependOn(&install_spinner.step);
     //     example_spinner_step.dependOn(&run_spinner.step);
 
-    // --- progress example ----------------------------------------------------
+    // progress example >
     const progress_exe = b.addExecutable(.{
         .name = "progress",
         .root_module = b.createModule(.{
@@ -468,6 +455,7 @@ pub fn build(b: *std.Build) void {
     progress_exe.root_module.addImport("fern_style", style_mod);
     progress_exe.root_module.addImport("fern_app", app_mod);
     progress_exe.root_module.addImport("fern_widget", widget_mod);
+
     // fern_anim: because a progress bar that does not move is just a rectangle.
     progress_exe.root_module.addImport("fern_anim", anim_lib.root_module);
 
@@ -478,7 +466,7 @@ pub fn build(b: *std.Build) void {
     const example_progress_step = b.step("example-progress", "Run examples/02_progress");
     example_progress_step.dependOn(&run_progress.step);
 
-    // --- list example --------------------------------------------------------
+    // list example >
     const list_exe = b.addExecutable(.{
         .name = "list",
         .root_module = b.createModule(.{

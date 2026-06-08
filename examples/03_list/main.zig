@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// examples/03_list/main.zig
+// simple list: arrows or j/k to move, enter to select, q to quit.
+// compact layout, dots paginator, no extra ui.
 //
-// A simple interactive list: arrow keys, j/k, enter to pick something,
-// q to flee. The list-simple example -- compact layout,
-// dots paginator, no extra chrome.
-//
-// Run from the fern/ directory:
-//   zig build example-list
+// run: zig build example-list
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
@@ -15,9 +11,6 @@ const style = @import("fern_style");
 const app = @import("fern_app");
 const widget = @import("fern_widget");
 
-// ---- Items ------------------------------------------------------------------
-
-// Seven perfectly reasonable dinner options.  The cursor does not judge.
 const ITEMS = [_][]const u8{
     "Ramen",
     "Tomato Soup",
@@ -28,16 +21,13 @@ const ITEMS = [_][]const u8{
     "Pasta",
 };
 
-// Items visible per page; anything beyond this earns a dot.
 const PAGE_SIZE: usize = 5;
-
-// ---- Msg --------------------------------------------------------------------
 
 const Msg = union(enum) {
     key: ansi.KeyEvent,
 };
 
-// ---- State ------------------------------------------------------------------
+// State >>
 
 // NONE == ITEMS.len: sentinel meaning the user has not committed to a meal yet.
 const NONE: usize = ITEMS.len;
@@ -48,28 +38,25 @@ const State = struct {
     chosen: usize = NONE,
 };
 
-// ---- Styles -----------------------------------------------------------------
+// Styles >>
 
-// Bold white -- question prompt; the one doing the asking.
-const PROMPT_STYLE = style.Style.init()
-    .bold_(true)
+// Bold white
+const PROMPT_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .rgb = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF } });
 
-// Bold magenta -- highlighted item and cursor glyph; hard to miss.
-const SELECTED_STYLE = style.Style.init()
-    .bold_(true)
+// Bold magenta
+const SELECTED_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .ansi16 = .bright_magenta });
 
-// Dim grey -- help bar, paginator dots, confirmation; useful but not loud.
+// Dim grey
 const DIM_STYLE = style.Style.init()
     .fg_(.{ .ansi16 = .bright_black });
 
-// Bold green -- chosen confirmation; the terminal's version of a thumbs-up.
-const DONE_STYLE = style.Style.init()
-    .bold_(true)
+// Bold green 
+const DONE_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .rgb = .{ .r = 0x04, .g = 0xB5, .b = 0x75 } });
 
-// ---- init -------------------------------------------------------------------
+// init >>
 
 fn init(alloc: std.mem.Allocator) !struct { State, ?app.Cmd(Msg) } {
     _ = alloc;
@@ -78,13 +65,13 @@ fn init(alloc: std.mem.Allocator) !struct { State, ?app.Cmd(Msg) } {
     pag.display = .dots;
     pag.per_page = PAGE_SIZE;
     pag.setTotalPages(ITEMS.len);
-    pag.active_dot = "\xe2\x97\x8f "; // ● U+25CF + trailing space
-    pag.inactive_dot = "\xe2\x97\x8b "; // ○ U+25CB + trailing space
+    pag.active_dot = "\xe2\x97\x8f ";
+    pag.inactive_dot = "\xe2\x97\x8b ";
 
     return .{ .{ .pag = pag }, null };
 }
 
-// ---- update -----------------------------------------------------------------
+// update >>
 
 fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
     _ = alloc;
@@ -93,7 +80,7 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
         .key => |k| {
             if (isQuit(k)) return .quit;
 
-            // Once chosen, any key quits -- the decision has been made.
+            // Once chosen, any key quits
             if (state.chosen != NONE) return .quit;
 
             switch (k.code) {
@@ -111,8 +98,7 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
     return null;
 }
 
-// Move cursor by delta, clamping to [0, ITEMS.len-1].  Syncs the paginator
-// so the dots track the cursor instead of wandering off on their own.
+// move cursor and keep in bounds. sync paginator dots.
 fn moveCursor(state: *State, delta: i2) void {
     if (delta < 0 and state.cursor > 0) {
         state.cursor -= 1;
@@ -123,7 +109,7 @@ fn moveCursor(state: *State, delta: i2) void {
     state.pag.page = state.cursor / PAGE_SIZE;
 }
 
-// ---- view -------------------------------------------------------------------
+// view >>
 
 const INDENT = "    ";
 
@@ -159,7 +145,6 @@ fn renderDone(out: *std.ArrayList(u8), alloc: std.mem.Allocator, chosen: usize) 
 
 // Render the interactive list: prompt, numbered rows, paginator, help bar.
 fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const State) !void {
-    // --- prompt --------------------------------------------------------------
     const prompt = try PROMPT_STYLE.render(alloc, "1: What do you want for dinner?");
     defer alloc.free(prompt);
 
@@ -168,7 +153,7 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
     try out.appendSlice(alloc, prompt);
     try out.appendSlice(alloc, "\r\n\r\n");
 
-    // --- item rows -----------------------------------------------------------
+    // item rows >
     // Only render the slice for the current page.
     const page_start = state.pag.page * PAGE_SIZE;
     const page_end = @min(page_start + PAGE_SIZE, ITEMS.len);
@@ -178,7 +163,7 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
         try renderRow(out, alloc, row, state.cursor);
     }
 
-    // --- paginator dots ------------------------------------------------------
+    // paginator dots >
     try out.appendSlice(alloc, "\r\n");
     try out.appendSlice(alloc, INDENT);
 
@@ -192,7 +177,7 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
 
     try out.appendSlice(alloc, "\r\n");
 
-    // --- help bar ------------------------------------------------------------
+    // help bar >
     {
         const help = try DIM_STYLE.render(
             alloc,
@@ -206,7 +191,6 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
 }
 
 // Render one list row.  Heap slices freed explicitly -- no defer-in-loop
-// because Zig's defer stack and loops have a complicated relationship.
 fn renderRow(
     out: *std.ArrayList(u8),
     alloc: std.mem.Allocator,
@@ -251,7 +235,7 @@ fn renderRow(
     try out.appendSlice(alloc, "\r\n");
 }
 
-// ---- Helpers ----------------------------------------------------------------
+// Helpers >>
 
 fn isQuit(k: ansi.KeyEvent) bool {
     switch (k.code) {
@@ -265,7 +249,7 @@ fn isQuit(k: ansi.KeyEvent) bool {
     return false;
 }
 
-// ---- main -------------------------------------------------------------------
+// main >>
 
 pub fn main(init_ctx: std.process.Init) !void {
     _ = std.Io.File.stdout().writeStreamingAll(init_ctx.io, "\x1B[2J\x1B[H") catch {};

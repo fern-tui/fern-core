@@ -1,5 +1,13 @@
 <!-- SPDX-License-Identifier: MIT -->
 
+> [!CAUTION]
+> AI was used to generate doc comments and documentation drafts. Nothing else.
+> The code, architecture, and design are fully handwritten Zig 0.16.
+> Zig no-AI policy covers code. We follow that. Using AI for tedious doc strings
+> is not the same as vibe coding a project. If you are here to push that they are
+> the same thing, close the tab.
+>
+
 <div align="center">
 
 <img src="docs/assets/logo_core_d1.png" alt="alt text" width="462">
