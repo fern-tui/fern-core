@@ -385,7 +385,7 @@ zig fmt examples/
 zig fmt build.zig
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full picture — coding style,
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full picture — coding style,
 commit format, how to add a new widget, and what "DO-178C targeting" means
 for code review. If `CONTRIBUTING.md` doesn't exist yet when you're reading this,
 open an issue. That's also contributing.
