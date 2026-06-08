@@ -1,149 +1,188 @@
-# Contributing to fern-core >>
+# Contributing to fern-core
 
-> This document is the thing the README says doesn't exist yet.  It now exists.
+> The README said this didn't exist. Surprise.
 
 ---
 
 ## Before you start
 
-1. Read the [README](README.md).  Not a skim.  The architecture section matters.
-2. Make sure `zig build test` passes on your machine.  If it doesn't, open an
-   issue before writing any code.
-3. Check the open issues for something labelled `good first issue` or
-   `help wanted`.  If you have a new idea, open an issue first so we can
-   discuss the design before you spend time on a PR that might not fit.
+1. Read the [README](README.md). The architecture section. Not just the badges.
+2. Run `zig build test` on your machine before touching anything. If it fails
+   before your changes, open an issue. Do not open a PR on a broken baseline.
+3. Check open issues for `good first issue` or `help wanted` before starting
+   new work. New idea? Open an issue first. A PR nobody asked for is a PR that
+   will wait indefinitely.
 
 ---
 
-## Zig version requirement
+## Zig version
 
-**Zig 0.16.0 only.**  Not nightly.  Not 0.14.  Not whatever the package
-manager pulled in.  If a PR introduces a breaking API or uses a feature not
-available in 0.16.0, it will be closed.
+**0.16.0. That's the whole rule.**
+
+Not nightly. Not 0.14. Not "I think it compiles." If your PR touches an API
+that doesn't exist in 0.16.0, it gets closed without ceremony.
 
 ---
 
-## How the codebase is structured
+## Codebase layout
 
 ```
 src/
-  ansi/    -- ANSI escape sequence parser and types.  No deps inside fern.
-  anim/    -- Physics animations (Spring, Throw).  No deps inside fern.
-  style/   -- Style, Border, Layout.  Depends on fern_ansi.
-  zone/    -- Zone Manager + ZoneInfo.  Depends on fern_ansi.
-  app/     -- TEA runtime.  Depends on fern_ansi, fern_anim, fern_zone.
-  widget/  -- Widgets.  Depends on fern_ansi, fern_style, fern_app, fern_anim.
-  chart/   -- Braille chart library.  Depends on nothing inside fern.
+  ansi/    -- ANSI escape sequences and types. No fern deps.
+  anim/    -- Physics animations (Spring, Throw). No fern deps.
+  style/   -- Style, Border, Layout. Depends on fern_ansi.
+  zone/    -- Zone Manager + ZoneInfo. Depends on fern_ansi.
+  app/     -- TEA runtime. Depends on fern_ansi, fern_anim, fern_zone.
+  widget/  -- Widgets. Depends on fern_ansi, fern_style, fern_app, fern_anim.
+  chart/   -- Braille chart library. No fern deps.
 examples/
   01_spinner/
   02_progress/
   03_list/
-  04_zone_click/
 ```
 
-**The dependency graph must remain a DAG.**  Specifically:
+**The dependency graph is a DAG. It stays a DAG.**
 
-- Nothing in `ansi/`, `anim/`, or `chart/` may import anything else in fern.
-- `style/` and `zone/` may only import `ansi/`.
-- `app/` may import `ansi/`, `anim/`, `zone/`.
-- `widget/` may import `ansi/`, `style/`, `app/`, `anim/`.
-- No module may import `widget/` or `chart/`.
+- `ansi/`, `anim/`, `chart/`: no fern imports. Zero.
+- `style/`, `zone/`: may only import `ansi/`.
+- `app/`: may import `ansi/`, `anim/`, `zone/`.
+- `widget/`: may import `ansi/`, `style/`, `app/`, `anim/`.
+- Nothing imports `widget/` or `chart/`.
 
-If a PR breaks this table, it will be rejected regardless of feature quality.
+A PR that introduces a cycle gets closed regardless of how good the feature is.
+Dependency discipline is non-negotiable.
 
 ---
 
-## Adding a new widget
+## Adding a widget
 
 1. Create `src/widget/<name>.zig`.
-2. Follow the existing pattern: `init()`, `update()`, `view()`, comptime `MsgT`.
-3. Export it from `src/widget/root.zig`.
-4. Add a `test-widget-<name>` step to `build.zig` (copy the pattern for
-   existing widgets).
-5. Write a `examples/0N_<name>/main.zig` that demonstrates the widget.
+2. Pattern: `init()`, `update()`, `view()`, comptime `MsgT`. Match existing widgets.
+3. Export from `src/widget/root.zig`.
+4. Add `test-widget-<name>` step to `build.zig`.
+5. Write `examples/0N_<name>/main.zig` demonstrating the widget.
 6. Add the example step to `build.zig`.
 
 ---
 
-## Adding a new chart type
+## Adding a chart type
 
-1. Create `src/chart/<type>.zig`.  Import only `canvas.zig` or nothing.
-2. Export it from `src/chart/root.zig`.
-3. Write tests in the same file (see `canvas.zig` for the pattern).
+1. Create `src/chart/<type>.zig`. Import only `canvas.zig` or nothing.
+2. Export from `src/chart/root.zig`.
+3. Tests live in the same file. See `canvas.zig` for the pattern.
 
 ---
 
 ## Code style
 
-- `const` by default; `var` only when mutation is necessary.
-- No shadowing -- it is a compile error in Zig 0.16.0 and we want it.
-- Allocators are passed as parameters, never stored in global state.
-  The documented exception is `fern_zone.Manager`, which must store its
-  allocator because it owns long-lived maps.
-- `errdefer` for error-path cleanup; `defer` for unconditional cleanup.
-- Comments explain *why*, not *what*.
-- Every public function has a doc comment (lines starting with `///`).
-- `zig fmt src/` and `zig fmt examples/` before every commit.
+- `const` by default. `var` only when mutation is actually required.
+- No shadowing. Zig 0.16.0 makes it a compile error; we consider this a feature.
+- `errdefer` for error-path cleanup. `defer` for unconditional cleanup.
+- Comments explain *why*, not *what*. If the comment restates the code, delete it.
+- Every public function has a doc comment (`///`).
+- Run `zig fmt src/ examples/ build.zig` before every commit. Not sometimes. Every time.
 
 ---
 
 ## Testing
 
-Every file must have test blocks for its public API.  Run:
+Every public API needs test blocks. Not most of them. All of them.
 
 ```bash
 zig build test          # all modules
-zig build test-app      # only app/
-zig build test-widget   # only widget/
+zig build test-app      # app/ only
+zig build test-widget   # widget/ only
 ```
 
-Tests must pass with no leaks under `std.testing.allocator`.
+Tests must pass clean under `std.testing.allocator`. Zero leaks.
+
+---
+
+## AI usage
+
+Using AI tools to assist development is fine. Submitting AI-generated code
+you do not understand is not.
+
+**What is acceptable:**
+
+- Using a model to move faster, catch your own mistakes, or explore an
+  approach -- then reviewing, verifying, and owning every line before it
+  goes into a PR.
+- Generating boilerplate that you then read and confirm is correct.
+
+**What will get your PR closed:**
+
+- **You cannot explain a line you submitted.**
+  "The model wrote it" is not a review response. It means you shipped code
+  you don't understand into a codebase other people depend on. That's a no.
+
+- **The model used Zig 0.14 or 0.13 APIs.**
+  Most LLMs were trained before Zig 0.16.0 and will confidently produce
+  code for versions that predate it. `std.io.Writer` changed. Allocator
+  interfaces changed. Several things that compiled in 0.14 do not compile
+  in 0.16.0. Verify every API call against the Zig 0.16.0 stdlib source,
+  not against what the model claims exists. The model is not the ground
+  truth. The source is.
+
+- **The model added heap allocation to a hot path.**
+  The model does not know the project rules. You do, because you read this
+  document. You own what you submit.
+
+- **The diff is a wall of changes with no coherent explanation.**
+  If you cannot describe in one paragraph what the PR does and why, it is
+  not ready. "I asked Claude to improve it" is not a description.
+
+One more time, because it matters: if a bug ships because you didn't verify
+what the model generated -- that bug has your name on it. You reviewed it.
+You approved it. You submitted it.
 
 ---
 
 ## Commit format
 
 ```
-Types(<scope>): <short description>
+type(scope): short description
 
-<optional longer explanation>
+optional longer body
 ```
-Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
-Scopes: `ansi`, `anim`, `style`, `zone`, `app`, `widget`, `chart`, `build`, `docs`, `examples`.
 
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
+       `ci`, `chore`, `revert`
+
+Scopes: `ansi`, `anim`, `style`, `zone`, `app`, `widget`, `chart`, `build`,
+        `docs`, `examples`
 
 Examples:
 
 ```
 fix(widget/stopwatch): fix stack-escape UB in start()
 fix(zone): wire Manager.scan() into app event loop
-feat(chart): add braille BarChart and Sparkline
 feat(build): add build.zig.zon package manifest
 ```
 
-No issue references required in the commit message, but link the issue in the
-PR description.
+Issue references go in the PR description, not the commit message.
 
 ---
 
-## Pull request checklist
+## PR checklist
 
 - [ ] `zig build test` passes
 - [ ] `zig fmt src/ examples/ build.zig` has been run
 - [ ] New public functions have doc comments
-- [ ] No new module introduces a cycle in the dep graph
-- [ ] The PR description links the issue it addresses (if any)
+- [ ] No new cycle introduced in the dep graph
+- [ ] PR description links the relevant issue (if any)
 
 ---
 
-## What we will not merge
+## What gets closed immediately
 
-- PRs that use a Zig version other than 0.16.0.
-- PRs that add a cycle to the dependency graph.
-- PRs that remove existing tests.
-- PRs that introduce UB (stack-escape, out-of-bounds, integer overflow without
-  explicit wrapping operators).
-- PRs for `fern_chart` that use heap allocation in hot render paths.
+- Zig version other than 0.16.0.
+- Dep cycle introduced.
+- Existing tests removed.
+- UB introduced: stack-escape, out-of-bounds, integer overflow without
+  explicit wrapping operators.
+- Heap allocation in hot render paths.
+- Code the author cannot explain in review.
 
 ---
 
