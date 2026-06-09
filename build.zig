@@ -224,7 +224,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_app_step.dependOn(&run.step);
@@ -238,6 +238,7 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             }),
+            .use_llvm = use_llvm,
         });
         if (needs_libc) unit.root_module.link_libc = true;
         const run = b.addRunArtifact(unit);
@@ -254,7 +255,7 @@ pub fn build(b: *std.Build) void {
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
         unit_mod.addImport("fern_anim", anim_lib.root_module);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         if (needs_libc) unit.root_module.link_libc = true;
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
@@ -283,7 +284,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -299,7 +300,7 @@ pub fn build(b: *std.Build) void {
         unit_mod.addImport("fern_ansi", ansi_mod);
         unit_mod.addImport("fern_style", style_mod);
         unit_mod.addImport("fern_app", app_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -316,7 +317,7 @@ pub fn build(b: *std.Build) void {
         unit_mod.addImport("fern_style", style_mod);
         unit_mod.addImport("fern_app", app_mod);
         unit_mod.addImport("fern_anim", anim_lib.root_module);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -330,7 +331,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         unit_mod.addImport("fern_app", app_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -344,7 +345,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         unit_mod.addImport("fern_app", app_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -358,7 +359,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -373,7 +374,7 @@ pub fn build(b: *std.Build) void {
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
         unit_mod.addImport("fern_style", style_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
@@ -388,7 +389,7 @@ pub fn build(b: *std.Build) void {
         });
         unit_mod.addImport("fern_ansi", ansi_mod);
         unit_mod.addImport("fern_style", style_mod);
-        const unit = b.addTest(.{ .root_module = unit_mod });
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
         const run = b.addRunArtifact(unit);
         test_step.dependOn(&run.step);
         test_widget_step.dependOn(&run.step);
