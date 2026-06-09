@@ -7,13 +7,8 @@
 
 const std = @import("std");
 
-// --- constants ---------------------------------------------------------------
-
-// Machine epsilon for f64: smallest e such that 1.0 + e != 1.0.
-// Used to select the damping regime without an arbitrary tolerance.
+// used to pick the damping regime
 const EPSILON: f64 = std.math.floatEps(f64);
-
-// --- types -------------------------------------------------------------------
 
 pub const UpdateResult = struct {
     pos: f64,
@@ -26,15 +21,13 @@ pub const Spring = struct {
     vel_pos_coef: f64,
     vel_vel_coef: f64,
 
-    // --- init ----------------------------------------------------------------
-
-    // Precomputes the 2x2 transition matrix for the given oscillator parameters.
-    // ang_freq and damping are clamped to [0, inf) before any computation.
+    // Precompute the 2x2 transition matrix.
+    // ang_freq and damping are clamped to [0, inf).
     pub fn init(delta_time: f64, ang_freq: f64, damping: f64) Spring {
         const w = @max(0.0, ang_freq);
         const zeta = @max(0.0, damping);
 
-        // A spring with zero angular frequency cannot move; return identity.
+        // zero frequency, nothing moves
         if (w < EPSILON) {
             return .{
                 .pos_pos_coef = 1.0,
@@ -44,7 +37,7 @@ pub const Spring = struct {
             };
         }
 
-        // Over-damped: two distinct real characteristic roots.
+        // over-damped: two real roots
         if (zeta > 1.0 + EPSILON) {
             const za = -w * zeta;
             const zb = w * std.math.sqrt(zeta * zeta - 1.0);
@@ -68,7 +61,7 @@ pub const Spring = struct {
             };
         }
 
-        // Under-damped: two complex conjugate roots; solution oscillates.
+        // under-damped: complex roots, oscillates
         if (zeta < 1.0 - EPSILON) {
             const omega_zeta = w * zeta;
             const alpha = w * std.math.sqrt(1.0 - zeta * zeta);
@@ -91,8 +84,7 @@ pub const Spring = struct {
             };
         }
 
-        // Critically-damped: one repeated real root; fastest approach without
-        // overshoot.
+        // critically damped: no overshoot, fastest convergence
         const exp_term = std.math.exp(-w * delta_time);
         const time_exp = delta_time * exp_term;
         const time_exp_freq = time_exp * w;
@@ -105,11 +97,7 @@ pub const Spring = struct {
         };
     }
 
-    // --- update --------------------------------------------------------------
-
-    // Applies one timestep.  Self is by value: Spring is immutable after init.
-    // Translates to equilibrium-relative coordinates so the matrix multiply
-    // is always relative to the target.
+    // Spring is by value so the same Spring can drive multiple objects.
     pub fn update(self: Spring, pos: f64, vel: f64, target: f64) UpdateResult {
         const p = pos - target;
         return .{
@@ -118,25 +106,17 @@ pub const Spring = struct {
         };
     }
 
-    // --- settled -------------------------------------------------------------
-
-    // Returns true when the animation has converged within threshold of target.
-    // Typical UI threshold: 0.001.  Self is unused but kept for call symmetry.
+    // Typical UI threshold is around 0.001.
     pub fn settled(self: Spring, pos: f64, vel: f64, target: f64, threshold: f64) bool {
         _ = self;
         return @abs(pos - target) < threshold and @abs(vel) < threshold;
     }
 };
 
-// --- fps ---------------------------------------------------------------------
-
-// Converts a frame rate to the delta-time in seconds between frames.
-// Caller must not pass 0; that produces inf.
+// Don't pass 0; that produces inf.
 pub inline fn fps(n: u32) f64 {
     return 1.0 / @as(f64, @floatFromInt(n));
 }
-
-// --- tests -------------------------------------------------------------------
 
 test "fps converts 60 frames per second to the correct delta time" {
     const testing = std.testing;
