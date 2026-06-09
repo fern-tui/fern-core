@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// parse.zig - VT/ANSI input parser: bytes -> Event
-//
-// Deps: color.zig, width.zig (width only for future use; not imported here)
-// Allocates only for paste content, unknown sequences, and OSC unknown bodies.
-// Everything else is stack-only.
+// Parses raw VT/ANSI byte streams into Events.
+// Alloc-free wherever possible. The only exceptions are pasted text and 
+// unknown sequences/OSC payloads. Everything else is handled on the stack.
+// TODO: wire up width.zig when we actually need it.
 
 const std = @import("std");
 const color = @import("color.zig");
@@ -51,7 +50,7 @@ pub const KeyMods = packed struct(u8) {
     meta: bool = false,
     _pad: u2 = 0,
 
-    // CSI modifier param uses 1-based: unmodified=1, shift=2, ctrl=5...
+    // CSI modifiers are 1-based: unmodified=1, shift=2, ctrl=5...
     pub fn csiBit(self: KeyMods) u8 {
         var n: u8 = 0;
         if (self.shift) n |= 1;
@@ -247,9 +246,7 @@ pub const Parser = struct {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Ground state
-    // -----------------------------------------------------------------------
+    // Ground state >>
 
     fn groundByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
         // CR+LF de-dup: if previous byte was CR and this is LF, eat it.
@@ -299,9 +296,7 @@ pub const Parser = struct {
         };
     }
 
-    // -----------------------------------------------------------------------
-    // Escape state
-    // -----------------------------------------------------------------------
+    // Escape state >>
 
     fn beginEscape(self: *Parser) void {
         self.state = .escape;
@@ -381,9 +376,7 @@ pub const Parser = struct {
         };
     }
 
-    // -----------------------------------------------------------------------
-    // SS3
-    // -----------------------------------------------------------------------
+    // SS3 >>
 
     fn ss3Byte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
         self.state = .ground;
@@ -403,9 +396,7 @@ pub const Parser = struct {
         };
     }
 
-    // -----------------------------------------------------------------------
-    // CSI entry: collect first byte
-    // -----------------------------------------------------------------------
+    // CSI entry: collect first byte >>
 
     fn csiEntryByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
         if (byte >= 0x40 and byte <= 0x7E) {
@@ -468,9 +459,7 @@ pub const Parser = struct {
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // CSI dispatch
-    // -----------------------------------------------------------------------
+    // CSI dispatch >>
 
     fn parseCsiParams(self: *const Parser) CsiParams {
         var out: CsiParams = .{
@@ -727,9 +716,7 @@ pub const Parser = struct {
         return Event{ .unknown = buf };
     }
 
-    // -----------------------------------------------------------------------
-    // OSC
-    // -----------------------------------------------------------------------
+    // OSC >>
 
     fn oscByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
         if (byte == 0x07) {
@@ -737,10 +724,9 @@ pub const Parser = struct {
             return self.dispatchOsc(alloc);
         }
         if (byte == 0x1B) {
-            // potential ESC \ terminator — peek handled on next byte
-            // We handle this by switching state temporarily. Simpler: check
-            // if next call is '\' while in osc_string. Store ESC in osc_buf
-            // and let next byte check for \\.
+            // Potential ESC \ terminator. 
+            // Instead of peeking, we just store the ESC in osc_buf and let the 
+            // next cycle handle the backslash check.
             if (self.osc_len < self.osc_buf.len) {
                 self.osc_buf[self.osc_len] = byte;
                 self.osc_len += 1;
@@ -823,9 +809,7 @@ pub const Parser = struct {
         };
     }
 
-    // -----------------------------------------------------------------------
-    // DCS
-    // -----------------------------------------------------------------------
+    // DCS >>
 
     fn dcsByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
         if (byte >= 0x40 and byte <= 0x7E and self.state != .dcs_passthrough) {
@@ -869,10 +853,7 @@ pub const Parser = struct {
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // SOS / PM / APC — drain until ST
-    // -----------------------------------------------------------------------
-
+    // SOS / PM / APC — drain until ST >>
     fn sosByte(self: *Parser, byte: u8) !?Event {
         if (byte == 0x9C) {
             self.state = .ground;
@@ -889,13 +870,10 @@ pub const Parser = struct {
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // Bracketed paste
-    // -----------------------------------------------------------------------
-
+    // Bracketed paste >>
     fn pasteByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
-        // Accumulate every byte into paste_buf. When the tail equals the
-        // bracketed-paste-end marker ESC[201~, strip it and emit PasteEvent.
+        // Slurp everything into the paste buffer. 
+        // When we finally hit the ESC[201~ terminator, strip it out and trigger the event.
         const MARKER_LEN = 6; // "\x1b[201~"
         const MARKER: [MARKER_LEN]u8 = .{ 0x1B, '[', '2', '0', '1', '~' };
 
@@ -914,9 +892,7 @@ pub const Parser = struct {
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // UTF-8 multi-byte accumulation
-    // -----------------------------------------------------------------------
+    // UTF-8 multi-byte accumulation >>
 
     fn beginUtf8(self: *Parser, total: u3, first_bits: u21) void {
         self.utf8_rem = total - 1;
@@ -946,9 +922,7 @@ pub const Parser = struct {
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
+    // Helpers >>
 
     fn addInter(self: *Parser, byte: u8) void {
         if (self.inter_len < self.inter_buf.len) {
@@ -969,10 +943,6 @@ pub const Parser = struct {
 fn keyEvent(code: KeyCode, mods: KeyMods) ?Event {
     return Event{ .key = .{ .code = code, .mods = mods } };
 }
-
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
 test "ground: printable char A" {
     var p = Parser.init();

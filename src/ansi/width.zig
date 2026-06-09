@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-// width.zig - terminal cell width for Unicode codepoints
-//
-// No deps. Tables derived from UAX#11 and Unicode 15.1.
-// cpWidth: 0=zero-width/combining, 1=normal, 2=wide
+// UAX#11 / Unicode 15.1 width tables.
+// cpWidth: 0=combining, 1=normal, 2=wide
 
 const std = @import("std");
 
 // A half-open codepoint range [lo, hi).
 const Range = struct { lo: u21, hi: u21 };
 
-// Sorted combining/zero-width ranges (cell width = 0).
-// Includes C0/C1 controls, soft hyphen, and all combining marks
-// listed in the spec. Kept sorted for binary search.
+// These are the combining and zero-width ranges (where cell width is 0).
+// It includes C0/C1 controls, the soft hyphen, and all the combining marks
+// from the spec.
+// Do not unsort this, it relies on binary search.
+
+// <AI>
 const COMBINING: []const Range = &.{
     .{ .lo = 0x0000, .hi = 0x0020 }, // C0 controls
     .{ .lo = 0x007F, .hi = 0x00A0 }, // DEL + C1 controls
@@ -393,6 +394,8 @@ const WIDE: []const Range = &.{
     .{ .lo = 0x30000, .hi = 0x40000 }, // CJK Ext G
 };
 
+// </AI>
+
 fn rangeContains(ranges: []const Range, cp: u21) bool {
     // binary search over sorted table
     var lo: usize = 0;
@@ -417,7 +420,7 @@ pub fn cpWidth(cp: u21) u2 {
     return 1;
 }
 
-// Cell width of a plain UTF-8 string. No ANSI awareness.
+// Cell width of a plain UTF-8 string
 pub fn rawWidth(s: []const u8) usize {
     var w: usize = 0;
     var i: usize = 0;
@@ -434,8 +437,8 @@ pub fn rawWidth(s: []const u8) usize {
     return w;
 }
 
-// Cell width of an ANSI-escaped string.
-// Skips CSI, OSC, DCS, and plain ESC+byte sequences.
+// Cell width of an ANSI-escaped string
+// Skips CSI, OSC, DCS, and plain ESC+byte sequences
 pub fn strWidth(s: []const u8) usize {
     var w: usize = 0;
     var i: usize = 0;
@@ -500,16 +503,12 @@ pub fn strWidth(s: []const u8) usize {
     return w;
 }
 
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
-
 test "cpWidth ASCII" {
     try std.testing.expectEqual(@as(u2, 1), cpWidth('A'));
 }
 
 test "cpWidth CJK wide" {
-    try std.testing.expectEqual(@as(u2, 2), cpWidth(0x4E2D)); // U+4E2D "zhong"
+    try std.testing.expectEqual(@as(u2, 2), cpWidth(0x4E2D));
 }
 
 test "cpWidth combining grave" {
@@ -521,7 +520,7 @@ test "rawWidth hello" {
 }
 
 test "rawWidth CJK" {
-    try std.testing.expectEqual(@as(usize, 4), rawWidth("\xe4\xb8\xad\xe6\x96\x87")); // "zhong wen"
+    try std.testing.expectEqual(@as(usize, 4), rawWidth("\xe4\xb8\xad\xe6\x96\x87"));
 }
 
 test "strWidth bold hello" {

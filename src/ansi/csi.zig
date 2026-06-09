@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-// csi.zig - CSI sequence generation: SGR, cursor, erase, scroll, modes
-//
-// Deps: color.zig
-// All write functions use duck-typed Writer (anytype with writeAll).
-// Zero heap allocation. Stack-only.
+// Terminal CSI sequence helpers.
+// Everything takes a Writer and operates completely on the stack.
 
 const std = @import("std");
 const color = @import("color.zig");
@@ -13,7 +10,7 @@ pub const Color = color.Color;
 pub const ColorProfile = color.ColorProfile;
 pub const Ansi16 = color.Ansi16;
 
-// SGR attribute set for a single terminal cell or style span.
+// SGR formatting for a single cell/span.
 pub const Attrs = struct {
     bold: bool = false,
     faint: bool = false,
@@ -59,7 +56,7 @@ pub const Attrs = struct {
             std.meta.eql(a.ul_color, b.ul_color);
     }
 
-    // Merge b onto a: any non-default field in b overrides a.
+    // Apply b to a. Ignores defaults in b.
     pub fn merge(a: Attrs, b: Attrs) Attrs {
         return .{
             .bold = if (b.bold) b.bold else a.bold,
@@ -128,7 +125,7 @@ pub const MouseTrackingMode = enum {
     any,
 };
 
-// Inline decimal encoder — avoids std.fmt on hot path.
+// Fast decimal encoder (bypasses std.fmt overhead).
 fn writeU16(w: anytype, n: u16) !void {
     var buf: [5]u8 = undefined;
     var i: u8 = 5;
@@ -148,10 +145,6 @@ fn writeU16(w: anytype, n: u16) !void {
 fn writeU8(w: anytype, n: u8) !void {
     try writeU16(w, n);
 }
-
-// ----------------------------------------------------------------------------
-// SGR
-// ----------------------------------------------------------------------------
 
 pub fn sgrReset(w: anytype) !void {
     try w.writeAll("\x1b[0m");
@@ -278,14 +271,14 @@ pub fn sgrUlColor(w: anytype, c: Color) !void {
             try w.writeAll("m");
         },
         .ansi16 => {
-            // ul_color with ansi16 is not a VTE extension; emit reset
+            // VTE doesn't support ansi16 underline colors. Just reset.
             try w.writeAll("\x1b[59m");
         },
     }
 }
 
-// Emit only the sequences needed to transition from prev to next.
-// Pass Attrs{} as prev for first render (emits all non-default fields).
+// Only emits the diff between prev and next.
+// For the initial render, just pass an empty Attrs{} as prev to force-emit everything.
 pub fn sgrDiff(w: anytype, prev: Attrs, next: Attrs, profile: ColorProfile) !void {
     if (Attrs.eql(prev, next)) return;
 
@@ -325,10 +318,6 @@ pub fn sgrDiff(w: anytype, prev: Attrs, next: Attrs, profile: ColorProfile) !voi
         try sgrUlColor(w, next.ul_color.downgrade(profile));
     }
 }
-
-// ----------------------------------------------------------------------------
-// Cursor movement
-// ----------------------------------------------------------------------------
 
 pub fn cursorUp(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
@@ -424,10 +413,6 @@ pub fn cursorShape(w: anytype, shape: CursorShape) !void {
     try w.writeAll(" q");
 }
 
-// ----------------------------------------------------------------------------
-// Erase
-// ----------------------------------------------------------------------------
-
 pub fn eraseDisplay(w: anytype, mode: EraseDisplay) !void {
     const n: u8 = switch (mode) {
         .below => 0,
@@ -450,10 +435,6 @@ pub fn eraseLine(w: anytype, mode: EraseLine) !void {
     try writeU8(w, n);
     try w.writeAll("K");
 }
-
-// ----------------------------------------------------------------------------
-// Scroll / insert / delete
-// ----------------------------------------------------------------------------
 
 pub fn scrollUp(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
@@ -496,10 +477,6 @@ pub fn eraseChars(w: anytype, n: u16) !void {
     try writeU16(w, n);
     try w.writeAll("X");
 }
-
-// ----------------------------------------------------------------------------
-// DEC private modes
-// ----------------------------------------------------------------------------
 
 pub fn modeSet(w: anytype, mode: Mode) !void {
     try w.writeAll("\x1b[?");
@@ -572,10 +549,6 @@ pub fn syncOutputEnd(w: anytype) !void {
     try modeReset(w, .synchronized_output);
 }
 
-// ----------------------------------------------------------------------------
-// Terminal capability queries
-// ----------------------------------------------------------------------------
-
 pub fn queryTermName(w: anytype) !void {
     try w.writeAll("\x1b[>q");
 }
@@ -598,10 +571,6 @@ pub fn queryTermcap(w: anytype, cap: []const u8) !void {
     }
     try w.writeAll("\x1b\\");
 }
-
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
 // Simple stack-allocated writer for tests. std.io.fixedBufferStream is gone
 // in 0.16; our write fns only need .writeAll so this suffices.
