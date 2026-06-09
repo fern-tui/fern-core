@@ -131,6 +131,30 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(widget_lib);
 
+    // docs >>
+    //
+    // Create a library step that will have its documentation emitted.
+    // We reuse the existing widget_mod which already has all imports.
+    const docs_lib = b.addLibrary(.{
+        .name = "fern_docs",
+        .root_module = widget_mod, // widget_mod already includes everything
+        .linkage = .static,
+    });
+
+    // Retrieve the directory where Zig will place the emitted HTML files.
+    const emitted_docs = docs_lib.getEmittedDocs();
+
+    // Install those HTML files into zig-out/docs/ when the docs step runs.
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = emitted_docs,
+        .install_dir = .prefix,      // installs to zig-out/
+        .install_subdir = "docs",    // subdirectory: zig-out/docs/
+    });
+
+    // Create a top-level step named "docs".
+    const docs_step = b.step("docs", "Generate project documentation (HTML)");
+    docs_step.dependOn(&install_docs.step);
+
     // tests >>
     //
     // one test binary per file to see which module failed.
