@@ -1,32 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-// info.zig -- axis-aligned bounding box and query methods for a named zone.
-//
-// Pure Zig; no platform syscalls, no libc, no drama.
-// Import map:
-//   info.zig -- fern_ansi (MouseEvent only)
-
 const ansi = @import("fern_ansi");
 
-// --- ZoneInfo ----------------------------------------------------------------
-//
-// Axis-aligned bounding box of a named component, in 0-based terminal cells.
-// (0, 0) is the top-left cell of the screen.  Coordinates are set by
-// Manager.scan(); zero value means not yet scanned.
+// AABB of a named component in 0-based terminal cells.
+// (0, 0) is top-left. Set by Manager.scan(); zero value means not yet scanned.
 pub const ZoneInfo = struct {
-
-    // --- fields --------------------------------------------------------------
-
     start_x: u16,
     start_y: u16,
     end_x: u16,
     end_y: u16,
 
-    // --- methods -------------------------------------------------------------
-
-    // Returns true if the mouse event falls within this zone.
-    // Inclusive box: start <= event <= end on both axes.
-    // Returns false for a malformed zone where start > end on either axis.
+    // Inclusive on all edges. Returns false for malformed zones where start > end.
     pub fn inBounds(self: ZoneInfo, mouse: ansi.MouseEvent) bool {
         if (self.start_x > self.end_x or self.start_y > self.end_y) return false;
         if (mouse.col < self.start_x or mouse.col > self.end_x) return false;
@@ -34,9 +18,7 @@ pub const ZoneInfo = struct {
         return true;
     }
 
-    // Returns the mouse position relative to this zone's top-left corner.
-    // (0, 0) = the zone's start_x, start_y cell.
-    // Returns null if the mouse is outside the zone.
+    // (0, 0) is the zone's top-left corner. Returns null if outside.
     pub fn relPos(self: ZoneInfo, mouse: ansi.MouseEvent) ?struct { x: u16, y: u16 } {
         if (!self.inBounds(mouse)) return null;
         return .{
@@ -45,15 +27,11 @@ pub const ZoneInfo = struct {
         };
     }
 
-    // Returns true if the zone covers zero area (all four fields are zero).
-    // A zero zone means the ID is registered but no frame has been scanned
-    // yet -- so you know the component exists, just not where it lives.
+    // All-zero means registered but not yet scanned.
     pub fn isEmpty(self: ZoneInfo) bool {
         return self.start_x == 0 and self.start_y == 0 and self.end_x == 0 and self.end_y == 0;
     }
 };
-
-// --- tests -------------------------------------------------------------------
 
 const std = @import("std");
 
