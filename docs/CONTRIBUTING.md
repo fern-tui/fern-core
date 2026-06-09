@@ -1,28 +1,24 @@
 # Contributing to fern-core
 
-> The README said this didn't exist. Surprise.
-
----
+If you are reading this, you are already thinking about
+contributing. That is appreciated. fern is free and open-source software. 
+Bug reports and patches are welcome from everyone. fern governance is 
+BDFN (Benevolent Dictator For Now), which means the fern-tui team has 
+final say on the design and implementation of everything.
 
 ## Before you start
 
-1. Read the [README](README.md). The architecture section. Not just the badges.
+1. Read the [README](../README.md), particularly the architecture section.
 2. Run `zig build test` on your machine before touching anything. If it fails
    before your changes, open an issue. Do not open a PR on a broken baseline.
 3. Check open issues for `good first issue` or `help wanted` before starting
    new work. New idea? Open an issue first. A PR nobody asked for is a PR that
    will wait indefinitely.
 
----
-
 ## Zig version
 
-**0.16.0. That's the whole rule.**
-
-Not nightly. Not 0.14. Not "I think it compiles." If your PR touches an API
-that doesn't exist in 0.16.0, it gets closed without ceremony.
-
----
+0.16.0. Not nightly, not 0.14, not 0.13. If your PR touches an API that does
+not exist in 0.16.0, it gets closed.
 
 ## Codebase layout
 
@@ -41,18 +37,16 @@ examples/
   03_list/
 ```
 
-**The dependency graph is a DAG. It stays a DAG.**
+The dependency graph is a DAG. It stays a DAG.
 
-- `ansi/`, `anim/`, `chart/`: no fern imports. Zero.
+- `ansi/`, `anim/`, `chart/`: no fern imports.
 - `style/`, `zone/`: may only import `ansi/`.
 - `app/`: may import `ansi/`, `anim/`, `zone/`.
 - `widget/`: may import `ansi/`, `style/`, `app/`, `anim/`.
 - Nothing imports `widget/` or `chart/`.
 
-A PR that introduces a cycle gets closed regardless of how good the feature is.
+A PR that introduces a cycle is closed regardless of the feature it delivers.
 Dependency discipline is non-negotiable.
-
----
 
 ## Adding a widget
 
@@ -63,32 +57,26 @@ Dependency discipline is non-negotiable.
 5. Write `examples/0N_<name>/main.zig` demonstrating the widget.
 6. Add the example step to `build.zig`.
 
----
-
 ## Adding a chart type
 
 1. Create `src/chart/<type>.zig`. Import only `canvas.zig` or nothing.
 2. Export from `src/chart/root.zig`.
 3. Tests live in the same file. See `canvas.zig` for the pattern.
 
----
-
 ## Code style
 
 - `const` by default. `var` only when mutation is actually required.
 - No shadowing. Zig 0.16.0 makes it a compile error; we consider this a feature.
 - `errdefer` for error-path cleanup. `defer` for unconditional cleanup.
-- Comments explain *why*, not *what*. If the comment restates the code, delete it.
+- Comments explain why, not what. If the comment restates the code, delete it.
 - Every public function has a doc comment (`///`).
 - Run `zig fmt src/ examples/ build.zig` before every commit. Not sometimes. Every time.
-
----
 
 ## Testing
 
 Every public API needs test blocks. Not most of them. All of them.
 
-```bash
+```sh
 zig build test          # all modules
 zig build test-app      # app/ only
 zig build test-widget   # widget/ only
@@ -96,47 +84,35 @@ zig build test-widget   # widget/ only
 
 Tests must pass clean under `std.testing.allocator`. Zero leaks.
 
----
-
 ## AI usage
 
-Using AI tools to assist development is fine. Submitting AI-generated code
-you do not understand is not.
+fern does not adopt Zig's no-LLM policy. AI tools are welcome; shipping
+code you cannot explain is not.
 
-**What is acceptable:**
+Using a model to move faster, catch your own mistakes, or explore an approach
+is acceptable. Generating boilerplate that you then read and verify is
+acceptable.
 
-- Using a model to move faster, catch your own mistakes, or explore an
-  approach -- then reviewing, verifying, and owning every line before it
-  goes into a PR.
-- Generating boilerplate that you then read and confirm is correct.
+The following will get a PR closed:
 
-**What will get your PR closed:**
+- You cannot explain a line in review. "The model wrote it" is not a review
+  response. It means you shipped code you do not understand into a codebase
+  other people depend on.
 
-- **You cannot explain a line you submitted.**
-  "The model wrote it" is not a review response. It means you shipped code
-  you don't understand into a codebase other people depend on. That's a no.
+- The code uses Zig APIs from 0.14 or 0.13. Most models were trained before
+  0.16.0 and will confidently produce code for older versions. `std.io.Writer`
+  changed. Allocator interfaces changed. Several things that compiled in 0.14
+  do not compile in 0.16.0. Verify every API call against the 0.16.0 stdlib
+  source. The source is the ground truth. The model is not.
 
-- **The model used Zig 0.14 or 0.13 APIs.**
-  Most LLMs were trained before Zig 0.16.0 and will confidently produce
-  code for versions that predate it. `std.io.Writer` changed. Allocator
-  interfaces changed. Several things that compiled in 0.14 do not compile
-  in 0.16.0. Verify every API call against the Zig 0.16.0 stdlib source,
-  not against what the model claims exists. The model is not the ground
-  truth. The source is.
+- The model added heap allocation to a hot path. The model does not know the
+  project rules. You do, because you read this document. You own what you submit.
 
-- **The model added heap allocation to a hot path.**
-  The model does not know the project rules. You do, because you read this
-  document. You own what you submit.
+- The diff is a wall of changes with no coherent explanation. If you cannot
+  describe in one paragraph what the PR does and why, it is not ready.
 
-- **The diff is a wall of changes with no coherent explanation.**
-  If you cannot describe in one paragraph what the PR does and why, it is
-  not ready. "I asked Claude to improve it" is not a description.
-
-One more time, because it matters: if a bug ships because you didn't verify
-what the model generated -- that bug has your name on it. You reviewed it.
-You approved it. You submitted it.
-
----
+If a bug ships because you did not verify what the model generated, that bug
+has your name on it. You reviewed it. You approved it. You submitted it.
 
 ## Commit format
 
@@ -162,8 +138,6 @@ feat(build): add build.zig.zon package manifest
 
 Issue references go in the PR description, not the commit message.
 
----
-
 ## PR checklist
 
 - [ ] `zig build test` passes
@@ -171,8 +145,6 @@ Issue references go in the PR description, not the commit message.
 - [ ] New public functions have doc comments
 - [ ] No new cycle introduced in the dep graph
 - [ ] PR description links the relevant issue (if any)
-
----
 
 ## What gets closed immediately
 
@@ -185,5 +157,6 @@ Issue references go in the PR description, not the commit message.
 - Code the author cannot explain in review.
 
 ---
-
+<div align=center>
 Thank you for contributing.
+</div>
