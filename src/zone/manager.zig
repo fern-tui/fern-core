@@ -1,69 +1,36 @@
 // SPDX-License-Identifier: MIT
 
-// manager.zig -- zone manager: mark component output, scan frames, query
-// bounds.
-//
-// Single-threaded contract: all public methods must be called from one thread.
-// `enabled` is atomic so it can be toggled from outside the event loop.
-//
-// Import map:
-//   manager.zig -- std + fern_ansi (cpWidth) + info.zig (ZoneInfo)
+// Single-threaded contract: all public methods from one thread.
+// enabled is atomic so it can be toggled from outside the event loop.
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const info = @import("info.zig");
 const ZoneInfo = info.ZoneInfo;
 
-// --- constants ---------------------------------------------------------------
-
-// ESC character (0x1B) that begins an ANSI escape sequence.
 const MARKER_ESC: u8 = 0x1B;
-
-// '[' (0x5B) that follows ESC in CSI sequences.
 const MARKER_CSI: u8 = 0x5B;
+const MARKER_END: u8 = 0x7A; // 'z': private-use CSI final byte
 
-// 'z' (0x7A): private-use CSI final byte used for zone markers.
-const MARKER_END: u8 = 0x7A;
-
-// 5-digit minimum prevents ambiguity with real CSI parameters like ESC[25z.
+// 5-digit minimum to avoid collision with real CSI sequences like ESC[25z.
 const COUNTER_START: u32 = 10000;
 
 const PREFIX_START: u32 = 0;
 
-// --- Manager -----------------------------------------------------------------
-
 pub const Manager = struct {
-
-    // --- fields (all private) ------------------------------------------------
-
-    // ids: the source of truth -- rids and zones both point into its keys.
+    // ids is source of truth; rids and zones both point into its keys.
     ids: std.StringHashMap(u32),
-
-    // Maps internal marker number -> user-supplied ID.
-    // Values point into the keys of ids (no separate allocation).
+    // marker number -> user ID; values point into ids keys
     rids: std.AutoHashMap(u32, []const u8),
-
-    // Maps user-supplied ID -> most recent scanned ZoneInfo.
-    // Keys point into the keys of ids (no separate allocation).
+    // user ID -> last scanned ZoneInfo; keys point into ids
     zones: std.StringHashMap(ZoneInfo),
-
-    // Monotonically increasing marker counter.  Starts at COUNTER_START.
     counter: std.atomic.Value(u32),
-
-    // Monotonically increasing prefix counter.
     prefix_counter: std.atomic.Value(u32),
-
-    // Whether zone markers are recorded (true) or silently stripped (false).
-    // Atomic so it can be toggled from outside the event loop.
+    // atomic so it can be toggled outside the event loop
     enabled: std.atomic.Value(bool),
-
-    // Stored because Manager owns long-lived maps that grow over time.
-    // This is the documented exception to the "don't store allocator" rule.
+    // stored because the maps outlive individual frames
     alloc: std.mem.Allocator,
 
-    // --- lifecycle -----------------------------------------------------------
-
-    // alloc is used for HashMap growth and key duping.
     // enabled defaults to true.
     pub fn init(allocator: std.mem.Allocator) Manager {
         return .{
@@ -77,7 +44,7 @@ pub const Manager = struct {
         };
     }
 
-    // After deinit() the Manager must not be used -- it will not remind you.
+    // After deinit the Manager must not be used.
     pub fn deinit(self: *Manager) void {
         // Keys were duped by getOrCreateMarker; free each one.
         var key_it = self.ids.iterator();
@@ -89,8 +56,6 @@ pub const Manager = struct {
         self.zones.deinit();
     }
 
-    // --- control -------------------------------------------------------------
-
     pub fn setEnabled(self: *Manager, on: bool) void {
         self.enabled.store(on, .seq_cst);
     }
@@ -99,33 +64,18 @@ pub const Manager = struct {
         return self.enabled.load(.seq_cst);
     }
 
-    // --- prefix --------------------------------------------------------------
-
-    // Generate a unique prefix string for component instance IDs.
-    // Writes the prefix into buf (caller-owned, at least 24 bytes).
-    // Returns a slice into buf.  No allocation.
-    //
-    // Each component instance should call newPrefix(&self.prefix_buf) during
-    // init and prepend the result to all its zone IDs.  Without this,
-    // two instances of the same component type would share marker numbers
-    // and take turns being invisible, which is a confusing bug to debug.
+    // Writes a unique prefix into buf (caller owns, at least 24 bytes). Returns a slice into buf.
+    // Call during component init and prepend to all zone IDs; without this two instances of the
+    // same component share marker numbers and take turns going invisible.
     pub fn newPrefix(self: *Manager, buf: *[24]u8) []u8 {
         const n = self.prefix_counter.fetchAdd(1, .seq_cst);
         // "zone_" + 10-digit max + "__" = 18 chars < 24; bufPrint cannot fail.
         return std.fmt.bufPrint(buf, "zone_{d}__", .{n}) catch unreachable;
     }
 
-    // --- marking -------------------------------------------------------------
-
-    // Wrap content with invisible zone markers.
-    // Returns a dupe of content unchanged when:
-    //   - the manager is disabled, or
-    //   - id is empty, or
-    //   - content is empty.
-    // Caller owns the returned slice; free with allocator.free().
-    //
-    // The same user id always gets the same marker number within one Manager
-    // instance, so cached View output remains valid across frames.
+    // Wraps content with zone markers. Returns a dupe unchanged when disabled, id is empty,
+    // or content is empty. Caller frees with allocator.free().
+    // Same id always gets the same marker number within one Manager instance.
     pub fn mark(
         self: *Manager,
         allocator: std.mem.Allocator,
@@ -139,14 +89,8 @@ pub const Manager = struct {
         return buildMarked(allocator, marker_num, content);
     }
 
-    // --- scanning ------------------------------------------------------------
-
-    // Scan a rendered frame: strip zone markers, record component bounds.
-    // Returns the clean frame (caller owns; free with allocator.free()).
-    // The zones map is fully rebuilt on each call.
-    //
-    // Call once per rendered frame, after assembling the complete view string
-    // but before passing it to the diff renderer.
+    // Strips zone markers, records component bounds. Returns clean frame (caller frees).
+    // Call after assembling the full view string, before diffing.
     pub fn scan(
         self: *Manager,
         allocator: std.mem.Allocator,
@@ -156,29 +100,21 @@ pub const Manager = struct {
         return runScanner(self, allocator, frame);
     }
 
-    // --- querying ------------------------------------------------------------
-
-    // Return the ZoneInfo for the given user ID, or null if not yet scanned.
+    // Returns null if the id has not been scanned yet.
     pub fn get(self: *const Manager, id: []const u8) ?ZoneInfo {
         return self.zones.get(id);
     }
 
-    // Remove the stored zone for the given user ID.
     pub fn clear(self: *Manager, id: []const u8) void {
         _ = self.zones.remove(id);
     }
 
-    // Remove all stored zones.  Does not remove ID-to-marker mappings.
+    // Does not remove ID-to-marker mappings.
     pub fn clearAll(self: *Manager) void {
         self.zones.clearRetainingCapacity();
     }
 
-    // --- private -------------------------------------------------------------
-
-    // Look up the marker number for id; allocate a new one if absent.
-    // Counter increments before the maps are updated so a failed put does
-    // not waste a number visible to callers -- wasted numbers are not the
-    // problem; duplicate numbers are.
+    // Counter increments before map puts so a failed put doesn't waste a number visible to callers.
     fn getOrCreateMarker(self: *Manager, id: []const u8) error{OutOfMemory}!u32 {
         if (self.ids.get(id)) |n| return n;
 
@@ -195,10 +131,7 @@ pub const Manager = struct {
     }
 };
 
-// --- buildMarked -------------------------------------------------------------
-
-// Build the marked string: ESC[<n>z  +  content  +  ESC[<n>z.
-// Caller owns the result; free with allocator.free().
+// Builds ESC[<n>z + content + ESC[<n>z. Caller frees with allocator.free().
 fn buildMarked(
     allocator: std.mem.Allocator,
     marker_num: u32,
@@ -221,21 +154,16 @@ fn buildMarked(
     return out;
 }
 
-// --- runScanner --------------------------------------------------------------
-
-// Walk frame byte by byte.  Strip zone markers, record component bounds.
-// Builds a clean output string and updates manager.zones.
-//
-// pending is ephemeral: allocated from the caller's allocator, lives only
-// for one scan call.  The caller's allocator may be a per-frame arena.
-// manager.ids / rids / zones use manager.alloc because they outlive frames.
+// Walks frame byte by byte: strips zone markers, records bounds, returns clean output.
+// pending is ephemeral (caller's allocator, lives one scan call).
+// manager.ids/rids/zones use manager.alloc because they outlive frames.
 fn runScanner(
     manager: *Manager,
     allocator: std.mem.Allocator,
     frame: []const u8,
 ) error{OutOfMemory}![]u8 {
 
-    // PendingZone records the opening position of a marker not yet closed.
+    // Records the opening position of a marker not yet closed.
     const PendingZone = struct {
         start_x: u16,
         start_y: u16,
@@ -248,15 +176,13 @@ fn runScanner(
     defer output.deinit(allocator);
     defer pending.deinit();
 
-    // cur_x: printable cell width from the start of the current line.
-    // cur_y: number of newline characters seen so far (= current row index).
+    // cur_x: printable cell columns from start of current line.
+    // cur_y: newlines seen so far (= current row index).
     var cur_x: u16 = 0;
     var cur_y: u16 = 0;
     var i: usize = 0;
 
     while (i < frame.len) {
-
-        // --- newline ---------------------------------------------------------
         if (frame[i] == '\n') {
             try output.append(allocator, '\n');
             cur_y +|= 1;
@@ -265,7 +191,6 @@ fn runScanner(
             continue;
         }
 
-        // --- potential CSI escape sequence -----------------------------------
         if (frame[i] == MARKER_ESC and
             i + 1 < frame.len and
             frame[i + 1] == MARKER_CSI)
@@ -303,15 +228,13 @@ fn runScanner(
                 continue;
             }
 
-            // Not a zone marker.  Real ANSI CSI sequence: copy verbatim,
-            // do not advance cur_x.
+            // Real ANSI CSI sequence: copy verbatim, don't advance cur_x.
             const seq_len = consumeAnsiSeq(frame, i);
             try output.appendSlice(allocator, frame[i .. i + seq_len]);
             i += seq_len;
             continue;
         }
 
-        // --- regular UTF-8 codepoint -----------------------------------------
         const byte_len = std.unicode.utf8ByteSequenceLength(frame[i]) catch 1;
         const cp_end = @min(i + byte_len, frame.len);
         const cp_bytes = frame[i..cp_end];
@@ -324,20 +247,10 @@ fn runScanner(
     return output.toOwnedSlice(allocator);
 }
 
-// --- tryParseMarker ----------------------------------------------------------
-
-// Attempt to parse a zone marker starting at frame[pos].
-// Returns null if the bytes at pos are not a well-formed zone marker.
-// Returns num (marker number) and len (total byte length) on success.
-//
-// A well-formed zone marker matches: ESC '[' one-or-more-digits 'z'
-// ESC and '[' are already confirmed by the caller.
-//
-// The COUNTER_START >= 10000 guard is load-bearing.
-// Real CSI sequences can end in 'z' (e.g. ESC[25z for DEC mode queries).
-// Requiring num >= COUNTER_START makes false-positive collisions practically
-// impossible; anything below that threshold is a real terminal sequence and
-// we leave it alone, because terminals have opinions and we respect that.
+// Tries to parse a zone marker at frame[pos]. Returns null if not a valid marker.
+// A valid marker is ESC '[' digits 'z' where digits >= COUNTER_START.
+// The COUNTER_START guard is load-bearing: real CSI sequences can end in 'z'
+// (e.g. ESC[25z for DEC mode queries); anything below the threshold is left alone.
 fn tryParseMarker(
     frame: []const u8,
     pos: usize,
@@ -358,11 +271,8 @@ fn tryParseMarker(
     return .{ .num = num, .len = j + 1 - pos };
 }
 
-// --- consumeAnsiSeq ----------------------------------------------------------
-
-// Returns the byte length of the ANSI CSI sequence starting at frame[pos].
-// pos must point to ESC (0x1B).  Does not allocate.
-// If the sequence is malformed or truncated, returns 1 (just the ESC byte).
+// Returns byte length of the ANSI CSI sequence at frame[pos].
+// pos must point to ESC. Returns 1 for malformed or truncated sequences.
 fn consumeAnsiSeq(frame: []const u8, pos: usize) usize {
     if (pos + 1 >= frame.len) return 1;
 
@@ -379,8 +289,6 @@ fn consumeAnsiSeq(frame: []const u8, pos: usize) usize {
     // Truncated sequence: consume what remains and move on.
     return frame.len - pos;
 }
-
-// --- tests -------------------------------------------------------------------
 
 const testing = std.testing;
 

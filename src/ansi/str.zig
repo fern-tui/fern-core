@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-// str.zig - string utilities: ANSI-aware measure, truncate, pad, wrap
-//
-// Deps: width.zig
+// ANSI-safe string manipulation (measuring, truncating, padding).
 
 const std = @import("std");
 const width = @import("width.zig");
@@ -10,9 +8,9 @@ const width = @import("width.zig");
 pub const strWidth = width.strWidth;
 pub const rawWidth = width.rawWidth;
 
-// Allocate a copy of s with all ANSI escape sequences stripped.
+// Allocates a fresh string with all the ANSI garbage stripped out.
 pub fn stripAnsi(s: []const u8, alloc: std.mem.Allocator) ![]u8 {
-    // worst case: no escapes, output == input length
+    // Worst case: no escapes (out len == in len).
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
 
@@ -46,8 +44,8 @@ pub fn stripAnsi(s: []const u8, alloc: std.mem.Allocator) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-// Advance i past one complete escape sequence starting at i (must be 0x1B).
-// Returns new i.
+// Eats one full escape sequence starting at 'i' (assumes we're sitting on an ESC).
+// Returns the index immediately after it.
 fn skipEscape(s: []const u8, start: usize) usize {
     var i = start;
     if (i >= s.len or s[i] != 0x1B) return i;
@@ -74,10 +72,9 @@ fn skipEscape(s: []const u8, start: usize) usize {
     return i;
 }
 
-// Truncate s to at most max_width visible cells.
-// Returns a slice of s when no truncation needed (no alloc).
-// Allocates only when truncation is needed (may insert trailing space for
-// split wide char).
+// Truncate to max_width cells.
+// Zero allocs if it fits. If it doesn't, we allocate (mostly to handle padding
+// bisected wide chars with a space).
 pub fn truncate(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8 {
     var visible: usize = 0;
     var i: usize = 0;
@@ -118,8 +115,8 @@ pub fn truncate(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8
     return out;
 }
 
-// Pad s on the right to exactly target_width visible cells.
-// Truncates if wider. Allocates only when pad/truncate is needed.
+// Right-pads or truncates 's' to fit target_width exactly.
+// Alloc-free if no changes are needed.
 pub fn pad(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     const w = width.strWidth(s);
     if (w == target_width) {
@@ -137,7 +134,7 @@ pub fn pad(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     return out;
 }
 
-// Left-pad s with spaces to reach exactly target_width visible cells.
+// Left-pads 's' with spaces up to target_width visual cells.
 pub fn padLeft(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     const w = width.strWidth(s);
     if (w >= target_width) {
@@ -152,7 +149,7 @@ pub fn padLeft(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]
     return out;
 }
 
-// Split s on '\n'. Returned slices reference s bytes (no copy).
+// Split 's' on newlines (zero-copy).
 pub fn splitLines(s: []const u8, alloc: std.mem.Allocator) ![][]const u8 {
     var lines: std.ArrayList([]const u8) = .empty;
     defer lines.deinit(alloc);
@@ -191,8 +188,7 @@ pub fn maxLineWidth(s: []const u8) usize {
     return max;
 }
 
-// Wrap s to max_width cells. Breaks at spaces; force-breaks long words.
-// Returns newline-joined string (allocates).
+// Word-wrap to max_width (breaks on spaces, hard-chops huge words). Allocates the result.
 pub fn wrap(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
@@ -304,10 +300,6 @@ pub fn expandTabs(s: []const u8, tab_width: u8, alloc: std.mem.Allocator) ![]u8 
     }
     return out.toOwnedSlice(alloc);
 }
-
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
 test "stripAnsi removes CSI sequences" {
     const alloc = std.testing.allocator;

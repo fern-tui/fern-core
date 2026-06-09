@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// Linear projectile kinematics: Euler integration over a constant acceleration.
-// No allocator.  No error union.  Every function returns a plain value.
+// Linear projectile: Euler integration over a constant acceleration.
 
 const std = @import("std");
 
-// --- constants ---------------------------------------------------------------
-
-// Gravitational acceleration at Earth's surface: 9.81 m/s^2 downward.
-// Coordinate system: origin bottom-left, Y increases upward.
+// standard gravity, Y-up (origin bottom-left)
 pub const GRAVITY: Vec3 = .{ .x = 0.0, .y = -9.81, .z = 0.0 };
 
-// Gravitational acceleration in terminal cell coordinates.
-// Coordinate system: origin top-left, Y increases downward.
+// terminal gravity, Y-down (origin top-left)
 pub const TERM_GRAVITY: Vec3 = .{ .x = 0.0, .y = 9.81, .z = 0.0 };
-
-// --- types -------------------------------------------------------------------
 
 pub const Point3 = struct {
     x: f64 = 0.0,
@@ -29,26 +22,17 @@ pub const Vec3 = struct {
     z: f64 = 0.0,
 };
 
-// --- Throw -------------------------------------------------------------------
-
 pub const Throw = struct {
     pos: Point3,
     vel: Vec3,
     acc: Vec3,
-    // dt: seconds per frame; caller must not pass 0.0 or negative.
-    dt: f64,
-
-    // --- init ----------------------------------------------------------------
+    dt: f64, // don't pass 0.0 or negative
 
     pub fn init(delta_time: f64, pos: Point3, vel: Vec3, acc: Vec3) Throw {
         return .{ .pos = pos, .vel = vel, .acc = acc, .dt = delta_time };
     }
 
-    // --- update --------------------------------------------------------------
-
-    // Advances position by one Euler step then accumulates acceleration into
-    // velocity.  Position is updated before velocity so callers see the new
-    // position at the start of this frame's velocity, not the next.
+    // pos before vel so callers see position at frame start
     pub fn update(self: *Throw) Point3 {
         self.pos.x += self.vel.x * self.dt;
         self.pos.y += self.vel.y * self.dt;
@@ -61,8 +45,6 @@ pub const Throw = struct {
         return self.pos;
     }
 
-    // --- accessors -----------------------------------------------------------
-
     pub inline fn position(self: *const Throw) Point3 {
         return self.pos;
     }
@@ -73,8 +55,6 @@ pub const Throw = struct {
         return self.acc;
     }
 };
-
-// --- tests -------------------------------------------------------------------
 
 test "Throw init stores given initial state" {
     const testing = std.testing;

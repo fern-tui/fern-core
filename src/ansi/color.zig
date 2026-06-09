@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-// color.zig - terminal color representation and profile downgrade
-//
-// No deps. Pure data + algorithms.
+// terminal color types and profile downgrade. no deps.
 
 const std = @import("std");
 
@@ -44,7 +42,7 @@ pub const Color = union(enum) {
     ansi256: u8,
     rgb: Rgb,
 
-    // Construct from a 24-bit hex literal. Comptime only.
+    // comptime only - e.g. Color.hex(0xFF5733)
     pub fn hex(comptime v: u24) Color {
         return .{ .rgb = .{
             .r = @truncate(v >> 16),
@@ -70,7 +68,7 @@ pub const Color = union(enum) {
         };
     }
 
-    // Post-downgrade equality under a given profile.
+    // downgrades both sides before comparing
     pub fn eql(a: Color, b: Color, profile: ColorProfile) bool {
         const da = a.downgrade(profile);
         const db = b.downgrade(profile);
@@ -92,7 +90,7 @@ pub const Color = union(enum) {
     }
 };
 
-// xterm default 16-color reference palette for nearest-color matching
+// xterm default 16-color palette, used for nearest-color matching
 const ANSI16_PALETTE: [16]Rgb = .{
     .{ .r = 12, .g = 12, .b = 12 }, // 0  black
     .{ .r = 197, .g = 15, .b = 31 }, // 1  red
@@ -112,7 +110,7 @@ const ANSI16_PALETTE: [16]Rgb = .{
     .{ .r = 242, .g = 242, .b = 242 }, // 15 bright_white
 };
 
-// Weighted perceptual distance: 2r*dr^2 + 4g*dg^2 + 3b*db^2
+// weighted perceptual distance: 2r*dr^2 + 4g*dg^2 + 3b*db^2
 fn colorDist(a: Rgb, b: Rgb) u64 {
     const dr: i64 = @as(i64, a.r) - @as(i64, b.r);
     const dg: i64 = @as(i64, a.g) - @as(i64, b.g);
@@ -133,7 +131,7 @@ fn rgb_to_ansi16(c: Rgb) Color {
     return .{ .ansi16 = @enumFromInt(best_idx) };
 }
 
-// Expand ansi256 cube index (16-231) to RGB
+// ansi256 cube index 16-231 to rgb
 fn cube_to_rgb(index: u8) Rgb {
     var n = index - 16;
     const b_i: u8 = n % 6;
@@ -162,23 +160,19 @@ fn ansi256_to_ansi16(index: u8) Color {
 }
 
 fn rgb_to_ansi256(c: Rgb) Color {
-    // grayscale path: if all components equal
+    // grayscale path: all components equal
     if (c.r == c.g and c.g == c.b) {
         if (c.r < 8) return .{ .ansi256 = 16 };
         if (c.r > 248) return .{ .ansi256 = 231 };
         const idx: u8 = 232 + @as(u8, @intFromFloat(@round(@as(f32, @floatFromInt(c.r - 8)) / 247.0 * 23.0)));
         return .{ .ansi256 = idx };
     }
-    // chromatic path: map to 6x6x6 cube
+    // chromatic path: 6x6x6 cube
     const ri: u8 = @intFromFloat(@round(@as(f32, @floatFromInt(c.r)) / 255.0 * 5.0));
     const gi: u8 = @intFromFloat(@round(@as(f32, @floatFromInt(c.g)) / 255.0 * 5.0));
     const bi: u8 = @intFromFloat(@round(@as(f32, @floatFromInt(c.b)) / 255.0 * 5.0));
     return .{ .ansi256 = 16 + 36 * ri + 6 * gi + bi };
 }
-
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
 test "rgb black downgrades to ansi256 16" {
     const c = Color{ .rgb = .{ .r = 0, .g = 0, .b = 0 } };
