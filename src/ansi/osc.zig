@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-// osc.zig - OSC sequence generation: title, clipboard, hyperlink, color
-//
-// No deps. All sequences use ESC\ as ST (0x1B 0x5C). Never BEL.
-// Zero heap allocation except setClipboard which needs base64.
+// OSC sequence generators.
+// Terminates with ESC\ (never BEL).
+// Alloc-free, except setClipboard which requires an allocator for base64.
 
 const std = @import("std");
 
@@ -39,10 +38,9 @@ pub fn hyperlinkEnd(w: anytype) !void {
     try w.writeAll(ST);
 }
 
-// base64 alphabet
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-// Stack-based chunked base64 encoder. Writes in 3-byte input / 4-char output blocks.
+// Stack-based base64 encoder. Writes in chunks (3 bytes in, 4 chars out).
 fn writeBase64(w: anytype, data: []const u8) !void {
     var i: usize = 0;
     while (i + 3 <= data.len) : (i += 3) {
@@ -163,7 +161,7 @@ pub fn resetCursorColor(w: anytype) !void {
     try w.writeAll(ST);
 }
 
-// Desktop notification. Emits both PowerShell/WT and libnotify formats.
+// Fires off a desktop notification. Sends both the PS/WT and libnotify formats.
 pub fn notify(w: anytype, title: []const u8, body: []const u8) !void {
     // Windows Terminal / PowerShell format
     try w.writeAll(OSC_OPEN);
@@ -180,10 +178,6 @@ pub fn notify(w: anytype, title: []const u8, body: []const u8) !void {
     try w.writeAll(body);
     try w.writeAll(ST);
 }
-
-// ----------------------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------------------
 
 fn BufW(comptime cap: usize) type {
     return struct {
