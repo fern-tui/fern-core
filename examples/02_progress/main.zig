@@ -160,7 +160,7 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-// App wrapper >> 
+// App wrapper >>
 
 const AppState = struct {
     inner: State,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Parses raw VT/ANSI byte streams into Events.
-// Alloc-free wherever possible. The only exceptions are pasted text and 
+// Alloc-free wherever possible. The only exceptions are pasted text and
 // unknown sequences/OSC payloads. Everything else is handled on the stack.
 // TODO: wire up width.zig when we actually need it.
 
@@ -724,8 +724,8 @@ pub const Parser = struct {
             return self.dispatchOsc(alloc);
         }
         if (byte == 0x1B) {
-            // Potential ESC \ terminator. 
-            // Instead of peeking, we just store the ESC in osc_buf and let the 
+            // Potential ESC \ terminator.
+            // Instead of peeking, we just store the ESC in osc_buf and let the
             // next cycle handle the backslash check.
             if (self.osc_len < self.osc_buf.len) {
                 self.osc_buf[self.osc_len] = byte;
@@ -872,7 +872,7 @@ pub const Parser = struct {
 
     // Bracketed paste >>
     fn pasteByte(self: *Parser, byte: u8, alloc: std.mem.Allocator) !?Event {
-        // Slurp everything into the paste buffer. 
+        // Slurp everything into the paste buffer.
         // When we finally hit the ESC[201~ terminator, strip it out and trigger the event.
         const MARKER_LEN = 6; // "\x1b[201~"
         const MARKER: [MARKER_LEN]u8 = .{ 0x1B, '[', '2', '0', '1', '~' };

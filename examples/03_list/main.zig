@@ -52,7 +52,7 @@ const SELECTED_STYLE = style.Style.init().bold_(true)
 const DIM_STYLE = style.Style.init()
     .fg_(.{ .ansi16 = .bright_black });
 
-// Bold green 
+// Bold green
 const DONE_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .rgb = .{ .r = 0x04, .g = 0xB5, .b = 0x75 } });
 

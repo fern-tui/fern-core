@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     // Upstream linker issue: Zig's self-hosted linker can't handle the .sframe relocations
     // (R_X86_64_PC64) coming from recent GCC16/glibc updates.
     // Issue: https://codeberg.org/ziglang/zig/issues/30959
-    // 
+    //
     // Workaroun: bypass the internal linker using `zig build test -Duse-llvm=true`
     const use_llvm = b.option(bool, "use-llvm", "force LLVM backend (GCC16/glibc2.43+ sframe workaround)") orelse null;
 
