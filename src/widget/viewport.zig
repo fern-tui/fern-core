@@ -1,21 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-// viewport.zig - scrollable viewport widget.
-//
 // viewport:  Displays a subset of content lines within
 // a fixed width x height window.  Supports vertical scrolling via keystrokes
 // or programmatic scroll commands.  No Cmd; pure state.
-//
-// Imports: std, fern_ansi, fern_style, key.zig.
-
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const style = @import("fern_style");
 const key = @import("key.zig");
-
-// ---------------------------------------------------------------------------
-// KeyMap (mirrors bubbles/viewport)
-// ---------------------------------------------------------------------------
 
 pub const KeyMap = struct {
     up: key.Binding = .{
@@ -62,10 +53,6 @@ pub const KeyMap = struct {
     },
 };
 
-// ---------------------------------------------------------------------------
-// Viewport
-// ---------------------------------------------------------------------------
-
 pub const Viewport = struct {
     width: u16 = 0,
     height: u16 = 0,
@@ -80,13 +67,10 @@ pub const Viewport = struct {
     // reference and does not free them.
     lines: []const []const u8 = &.{},
 
-    // --- lifecycle ----------------------------------------------------------
-
+    // lifecycle
     pub fn init(width: u16, height: u16) Viewport {
         return .{ .width = width, .height = height };
     }
-
-    // --- content ------------------------------------------------------------
 
     /// Split content into lines and store them.
     /// Caller must keep content alive while Viewport uses it.
@@ -103,7 +87,7 @@ pub const Viewport = struct {
         return ls;
     }
 
-    // --- scroll queries -----------------------------------------------------
+    // scroll queries
 
     pub fn totalLineCount(self: Viewport) usize {
         return self.lines.len;
@@ -130,7 +114,7 @@ pub const Viewport = struct {
         return self.lines.len -| self.height;
     }
 
-    // --- programmatic scroll ------------------------------------------------
+    // programmatic scroll
 
     pub fn scrollUp(self: *Viewport, n: usize) void {
         if (self.y_offset < n) {
@@ -159,7 +143,7 @@ pub const Viewport = struct {
         self.y_offset = @min(self.y_offset, self.maxOffset());
     }
 
-    // --- update -------------------------------------------------------------
+    // update
 
     /// Handle a KeyEvent; returns the updated Viewport (pure value).
     pub fn update(self: Viewport, ev: ansi.KeyEvent) Viewport {
@@ -168,8 +152,6 @@ pub const Viewport = struct {
         if (key.matches(ev, vp.keymap.up)) vp.scrollUp(1) else if (key.matches(ev, vp.keymap.down)) vp.scrollDown(1) else if (key.matches(ev, vp.keymap.page_up)) vp.scrollUp(vp.height) else if (key.matches(ev, vp.keymap.page_down)) vp.scrollDown(vp.height) else if (key.matches(ev, vp.keymap.half_page_up)) vp.scrollUp(half) else if (key.matches(ev, vp.keymap.half_page_down)) vp.scrollDown(half) else if (key.matches(ev, vp.keymap.goto_top)) vp.gotoTop() else if (key.matches(ev, vp.keymap.goto_bottom)) vp.gotoBottom();
         return vp;
     }
-
-    // --- view ---------------------------------------------------------------
 
     /// Render the visible portion of content.
     /// Returns a heap-allocated string; caller frees with allocator.free().
@@ -241,10 +223,6 @@ fn renderBlankLines(
     }
     return out.toOwnedSlice(allocator);
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Viewport init defaults" {
     const vp = Viewport.init(80, 24);
