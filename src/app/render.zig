@@ -1,28 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-// render.zig - Diff renderer: frame string -> minimal terminal escape sequences.
-//
-// Imports: std, fern_ansi.
-// Named "cursed renderer". Algorithm is line-level diff --
-// simple but fast enough for 60 fps on any modern terminal.
-//
-// Platform: Linux + macOS only.
-
+// Diff renderer: turns raw frame strings into optimized terminal escape sequences.
+// Uses a naive line-level diff because it trivially hits 60fps anyway.
+// Linux/macOS only.
 const std = @import("std");
 const ansi = @import("fern_ansi");
 
-// ---------------------------------------------------------------------------
-// Renderer
-// ---------------------------------------------------------------------------
-
 pub const Renderer = struct {
 
-    // ---- fields (private) -------------------------------------------------
+    // fields (private)
 
-    // Writer to the terminal output.  Owned by caller; Renderer never closes it.
-    // Must be a pointer: std.Io.Writer vtable functions use @fieldParentPtr("writer", w)
-    // to recover the owning struct (e.g. Allocating).  A value copy would make
-    // that arithmetic point into Renderer instead — instant segfault.
+    // Terminal writer. Unowned; we never close it.
+    // MUST be a pointer. Passing a Zig Writer by value breaks the @fieldParentPtr
+    // vtable math and guarantees a segfault.
     writer: *std.Io.Writer,
 
     // Terminal dimensions.
@@ -44,7 +34,7 @@ pub const Renderer = struct {
     // True on the very first render -- full repaint needed.
     first_render: bool,
 
-    // ---- lifecycle --------------------------------------------------------
+    // lifecycle
 
     /// Initialize.  writer must outlive the Renderer.
     pub fn init(
@@ -71,7 +61,7 @@ pub const Renderer = struct {
         self.prev_lines.deinit(self.alloc);
     }
 
-    // ---- control ----------------------------------------------------------
+    // control
 
     /// Update terminal dimensions.  Called on resize events.
     pub fn resize(self: *Renderer, cols: u16, rows: u16) void {
@@ -90,7 +80,7 @@ pub const Renderer = struct {
         self.first_render = true;
     }
 
-    // ---- rendering --------------------------------------------------------
+    // rendering
 
     /// Render frame to the terminal using line-level diffing.
     /// frame is an ANSI-styled string produced by view().
@@ -143,9 +133,7 @@ pub const Renderer = struct {
     }
 };
 
-// ---------------------------------------------------------------------------
 // Private helpers
-// ---------------------------------------------------------------------------
 
 /// Write every line in full (first render path).
 fn fullRepaint(
@@ -234,10 +222,8 @@ fn updatePrevLines(self: *Renderer, new_lines: [][]const u8) error{OutOfMemory}!
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests (no real terminal required -- fake writer backed by Allocating)
-// ---------------------------------------------------------------------------
-
+// Headless tests. We don't touch the actual terminal here; we just route
+// everything into a dummy Allocating writer so we can assert on the buffer.
 test "Renderer first render writes all lines" {
     const allocator = std.testing.allocator;
 
