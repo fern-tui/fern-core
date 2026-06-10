@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-// key.zig - key binding declarations used across all fern widgets.
-//
-// key: a Binding pairs a set of KeyCode matchers with
-// optional help text.  matches() tests a live KeyEvent against a Binding.
-//
-// Imports: std, fern_ansi (KeyEvent, KeyCode, KeyMods).
-
+// Global keybindings for all fern widgets.
+// A Binding just glues a set of expected KeyCodes to some optional help text.
+// To check for a hit, just throw a live KeyEvent at `matches()` to see if
+// it triggers.
 const std = @import("std");
 const ansi = @import("fern_ansi");
-
-// ---------------------------------------------------------------------------
-// Binding
-// ---------------------------------------------------------------------------
 
 /// A set of key codes that trigger the same action, plus display help text.
 pub const Binding = struct {
@@ -59,9 +52,7 @@ fn keyCodeEql(a: ansi.KeyCode, b: ansi.KeyCode) bool {
     };
 }
 
-// ---------------------------------------------------------------------------
 // Helpers to build Bindings concisely
-// ---------------------------------------------------------------------------
 
 /// Build a Binding from a slice of KeyCode values.
 pub fn bind(codes: []const ansi.KeyCode) Binding {
@@ -76,10 +67,6 @@ pub fn bindHelp(
 ) Binding {
     return .{ .codes = codes, .key_display = key_display, .desc = desc };
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "matches returns true for matching char code" {
     const b = Binding{ .codes = &.{ .{ .char = 'j' }, .down } };
