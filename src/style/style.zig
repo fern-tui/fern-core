@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// style.zig - Style builder and render pipeline
-//
-// Style is a value type; all setters return a new Style.
-// render() owns all intermediate memory via an ArenaAllocator.
-// The caller owns the final []u8 and frees it with allocator.free().
-
+// Styles are cheap value types—every setter just returns a mutated copy.
+// For rendering, we shove all the messy intermediate allocations into a
+// temporary Arena and nuke it at the end. The caller only takes ownership
+// of the final []u8 string.
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const border = @import("border.zig");
@@ -29,8 +27,7 @@ pub const TAB_WIDTH_DEFAULT: i16 = 4;
 // this module.
 pub const Underline = ansi.Attrs.Underline;
 
-// --- Props bitmask (private) -------------------------------------------------
-//
+// Props bitmask (private)
 // Tracks which Style fields were explicitly set.
 // inherit() uses this to distinguish "not set" from "explicitly zero".
 
@@ -85,14 +82,12 @@ comptime {
     std.debug.assert(@bitSizeOf(Props) == 64);
 }
 
-// --- Style struct ------------------------------------------------------------
-
 pub const Style = struct {
 
-    // --- bitmask (private) ---------------------------------------------------
+    // bitmask (private)
     _props: Props = .{},
 
-    // --- text attributes -----------------------------------------------------
+    // text attributes
     bold: bool = false,
     italic: bool = false,
     faint: bool = false,
@@ -105,35 +100,35 @@ pub const Style = struct {
     // color_ws true: padding and margin spaces inherit the bg color
     color_ws: bool = true,
 
-    // --- colors --------------------------------------------------------------
+    // colors
     fg: ansi.Color = .none,
     bg: ansi.Color = .none,
     ul_color: ansi.Color = .none,
 
-    // --- sizing --------------------------------------------------------------
+    // sizing
     width: u16 = 0, // 0 = auto
     height: u16 = 0, // 0 = auto
     max_width: u16 = 0, // 0 = no limit
     max_height: u16 = 0, // 0 = no limit
 
-    // --- alignment -----------------------------------------------------------
+    // alignment
     align_h: Pos = LEFT,
     align_v: Pos = TOP,
 
-    // --- padding (inside border) ---------------------------------------------
+    // padding (inside border)
     pad_top: u16 = 0,
     pad_right: u16 = 0,
     pad_bottom: u16 = 0,
     pad_left: u16 = 0,
 
-    // --- margin (outside border) ---------------------------------------------
+    // margin (outside border)
     margin_top: u16 = 0,
     margin_right: u16 = 0,
     margin_bottom: u16 = 0,
     margin_left: u16 = 0,
     margin_bg: ansi.Color = .none,
 
-    // --- border --------------------------------------------------------------
+    // border
     border_style: Border = NONE,
     border_top: bool = false,
     border_right: bool = false,
@@ -148,18 +143,17 @@ pub const Style = struct {
     border_bottom_bg: ansi.Color = .none,
     border_left_bg: ansi.Color = .none,
 
-    // --- misc ----------------------------------------------------------------
+    // misc
     inline_mode: bool = false,
     // tab_width: -1 = leave tabs, 0 = strip, >0 = expand to N spaces
     tab_width: i16 = TAB_WIDTH_DEFAULT,
 
-    // --- lifecycle -----------------------------------------------------------
-
+    // lifecycle
     pub fn init() Style {
         return .{};
     }
 
-    // --- setters (value-receiver; each returns a new Style) ------------------
+    // setters (value-receiver; each returns a new Style)
 
     pub fn bold_(self: Style, on: bool) Style {
         var s = self;
@@ -534,13 +528,9 @@ pub const Style = struct {
         return s;
     }
 
-    // --- inherit -------------------------------------------------------------
-    //
-    // Copy each explicitly-set property from parent onto self, only when self
-    // does not already have that property set.
-    // Margins and padding are NOT inherited (matches lipgloss behaviour).
-    // If parent has bg set and self does not have margin_bg set, margin_bg
-    // is set to parent's bg.
+    // Cascades parent styles (acts as a fallback for any unset properties).
+    // Margins/padding do not inherit (lipgloss semantics).
+    // Unset margin_bg defaults to the parent's base bg.
     pub fn inherit(self: Style, parent: Style) Style {
         var s = self;
 
@@ -691,7 +681,7 @@ pub const Style = struct {
         return s;
     }
 
-    // --- border size getters (pub: widget/ needs them) -----------------------
+    // border size getters (pub: widget/ needs them)
 
     // Total width consumed by borders (left + right, in cells).
     pub fn borderHSize(self: Style) u16 {
@@ -709,8 +699,7 @@ pub const Style = struct {
         return h;
     }
 
-    // --- render --------------------------------------------------------------
-    //
+    // render
     // Caller owns the returned slice.  Free with allocator.free().
     // Returns error.OutOfMemory if any intermediate allocation fails.
     pub fn render(
@@ -796,7 +785,7 @@ pub const Style = struct {
     }
 };
 
-// --- render pipeline stages (private) ----------------------------------------
+// render pipeline stages (private)
 
 // Stage 1: expand, strip, or leave tabs according to tab_width.
 fn convertTabs(
@@ -1432,8 +1421,6 @@ fn applyMaxHeight(
 
     return out.toOwnedSlice(allocator);
 }
-
-// --- tests -------------------------------------------------------------------
 
 test "Style init returns zero-props style" {
     const s = Style.init();

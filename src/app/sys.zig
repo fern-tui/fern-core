@@ -1,29 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// sys.zig - platform syscall abstraction for the fern runtime.
-//
-// This file is the ONLY place in src/app/ that names std.os.linux or std.c
-// directly.  All other modules call through this file.
-//
-// Supported platforms (v1+):
-//   Linux  -- std.os.linux syscalls where std.c is unavailable
-//   macOS  -- std.c libc wrappers (no pipe2; uses pipe + fcntl)
-//
-// Windows (planned v3):
-//   Stubs are marked compileError so the compiler surfaces them early.
-//
-// Compile-time guard: importing this file on an unsupported OS
-// is a hard error with a clear message.
-
+// sys.zig - OS abstraction and libc quarantine.
+// All raw Linux syscalls and macOS libc hacks (like faking pipe2) live here.
+// Throws a comptime error on Windows and other unsupported platforms.
 const std = @import("std");
 const builtin = @import("builtin");
 
 const OS = builtin.os.tag;
 
-// ---------------------------------------------------------------------------
 // Platform guard
-// ---------------------------------------------------------------------------
-
 comptime {
     switch (OS) {
         .linux, .macos => {},
@@ -38,24 +23,12 @@ comptime {
     }
 }
 
-// ---------------------------------------------------------------------------
-// OS-tag booleans (comptime constants, zero cost after DCE)
-// ---------------------------------------------------------------------------
-
 pub const IS_LINUX: bool = (OS == .linux);
 pub const IS_MACOS: bool = (OS == .macos);
 
-// ---------------------------------------------------------------------------
-// write() -- async-signal-safe byte write to a file descriptor
-//
-// Used in signal handlers and worker threads.
-// Returns the number of bytes written; negative values are ignored by callers
-// (wakeup pipes: best-effort, not critical-path).
-//
-// Linux: raw linux.write syscall (no libc, safe inside signal handler)
-// macOS: std.c.write (libc, also async-signal-safe per POSIX)
-// ---------------------------------------------------------------------------
-
+// Async-signal-safe write (raw syscall on Linux, libc on macOS).
+// Strictly for best-effort wakeups from signal handlers/threads, so errors
+// are intentionally ignored.
 pub fn write(fd: std.posix.fd_t, buf: [*]const u8, count: usize) isize {
     if (IS_LINUX) {
         return @bitCast(std.os.linux.write(@bitCast(fd), buf, count));
@@ -65,14 +38,10 @@ pub fn write(fd: std.posix.fd_t, buf: [*]const u8, count: usize) isize {
     }
 }
 
-// ---------------------------------------------------------------------------
-// pipe() / initPipe() -- create a close-on-exec pipe pair
-//
-// Linux: linux.pipe2 with O_CLOEXEC in one syscall
-// macOS: std.c.pipe + two fcntl(F_SETFD, FD_CLOEXEC) calls
-//        (pipe2 is a Linux extension; macOS does not have it)
-// ---------------------------------------------------------------------------
-
+// Creates a pipe pair and forces them to close-on-exec.
+// Linux lets us do this cleanly in one shot with pipe2(). Since macOS doesn't
+// support pipe2, we have to polyfill it: open a standard pipe and manually
+// hammer both ends with fcntl to set FD_CLOEXEC.
 pub fn initPipe(fds: *[2]std.posix.fd_t) !void {
     if (IS_LINUX) {
         var raw: [2]i32 = undefined;
@@ -105,14 +74,8 @@ pub fn closePipe(fds: *[2]std.posix.fd_t) void {
     }
 }
 
-// ---------------------------------------------------------------------------
-// queryTerminalSize() -- TIOCGWINSZ ioctl
-//
-// Linux: std.os.linux.ioctl with linux.T.IOCGWINSZ
-// macOS: std.c.ioctl with std.c.T.IOCGWINSZ
-//        Both wrap the same ioctl(2) syscall; only the import path differs.
-// ---------------------------------------------------------------------------
-
+// Fetches terminal dimensions (TIOCGWINSZ).
+// Same ioctl on both OSes, just different Zig namespaces.
 pub fn queryTerminalSize(fd: std.posix.fd_t, cols: *u16, rows: *u16) void {
     var ws: std.posix.winsize = undefined;
 
@@ -140,14 +103,9 @@ pub fn queryTerminalSize(fd: std.posix.fd_t, cols: *u16, rows: *u16) void {
     }
 }
 
-// ---------------------------------------------------------------------------
-// nanosleep() -- sub-second sleep for worker threads
-//
-// Linux: std.os.linux.nanosleep (std.time.sleep removed in 0.16 and
-//        std.Io async replacements require an Io context detached threads lack)
-// macOS: std.c.nanosleep (same POSIX interface)
-// ---------------------------------------------------------------------------
-
+// Worker thread sleep.
+// Bypassing the stdlib since 0.16 removed std.time.sleep, and our detached
+// workers lack the Io context needed for the new async APIs.
 pub fn threadSleep(ns: u64) void {
     const ts = std.posix.timespec{
         .sec = @intCast(ns / std.time.ns_per_s),
@@ -160,13 +118,8 @@ pub fn threadSleep(ns: u64) void {
     }
 }
 
-// ---------------------------------------------------------------------------
-// nanoTimestamp() -- realtime clock in nanoseconds
-//
-// Linux: std.os.linux.clock_gettime (std.time.nanoTimestamp removed in 0.16)
-// macOS: std.c.clock_gettime (POSIX, available on macOS)
-// ---------------------------------------------------------------------------
-
+// Realtime clock (nanoseconds).
+// Polyfill for the removed std.time.nanoTimestamp via clock_gettime.
 pub fn nanoTimestamp() i64 {
     var ts: std.posix.timespec = undefined;
     if (IS_LINUX) {
@@ -176,10 +129,6 @@ pub fn nanoTimestamp() i64 {
     }
     return ts.sec * std.time.ns_per_s + ts.nsec;
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "write wakeup byte to a real pipe does not panic" {
     if (!IS_LINUX and !IS_MACOS) return error.SkipZigTest;

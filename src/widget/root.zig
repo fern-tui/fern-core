@@ -1,21 +1,29 @@
 // SPDX-License-Identifier: MIT
 
-// root.zig - fern.widget public surface: re-exports only, no logic.
-//
-// Users: const widget = @import("fern_widget");
-// Import graph: root -> spinner, progress, timer, stopwatch,
-//                       textinput, paginator, viewport (no cycles)
+// Public surface of fern/widget
 
+/// animated spinner. ticks via Cmd(.every).
 pub const spinner = @import("spinner.zig");
+
+/// progress bar with optional gradient and spring animation
 pub const progress = @import("progress.zig");
+
+/// countdown timer. emits TimeoutMsg when it hits zero.
 pub const timer = @import("timer.zig");
+
+/// elapsed time stopwatch. counts up from zero.
 pub const stopwatch = @import("stopwatch.zig");
+
+/// single-line text input. scrolls when width is set.
 pub const textinput = @import("textinput.zig");
+
+/// pagination state and dot/arabic indicator. no Cmd, pure math.
 pub const paginator = @import("paginator.zig");
+
+/// scrollable viewport into content. fixed w x h window, no Cmd.
 pub const viewport = @import("viewport.zig");
 
-// Convenience re-exports of the most-used types so callers can write
-// `widget.Spinner` instead of `widget.spinner.Spinner`.
+// shorthand - widget.Spinner instead of widget.spinner.Spinner
 pub const Spinner = spinner.Spinner;
 pub const Progress = progress.Progress;
 pub const Timer = timer.Timer;

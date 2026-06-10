@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-// app.zig - runtime: terminal raw mode, event loop, signal handling.
+// Runtime, raw mode, and event loop.
+// Note: Linux/macOS only. Windows throws a compile error.
 //
-// Imports: std, std.posix, fern_ansi, cmd.zig, render.zig, sys.zig.
-//
-// Platform support:
-//   v1  Linux  -- fully supported
-//   v1  macOS  -- partially supported (sys.zig routes all syscalls)
-//   v3  Windows -- compile-time error with porting guide reference
-//
-// Threading model (four threads):
-//   Thread 1  -- event loop (caller / main thread)
-//   Thread 2  -- input reader (reads stdin, feeds parser, pushes events)
-//   Thread 3+ -- command workers (one per .task Cmd, self-cleaning)
-//   SIGWINCH  -- wakeup via sig_pipe, not a separate thread
+// Threads:
+// 1. Main (event loop)
+// 2. Stdin reader (feeds parser)
+// N. Ephemeral workers for async tasks
+// (SIGWINCH is handled via a self-pipe, not a thread).
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
@@ -24,10 +18,6 @@ const sys = @import("sys.zig");
 pub const Cmd = cmd.Cmd;
 pub const Renderer = ren.Renderer;
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const FPS_DEFAULT: u32 = 60;
 
 // 16 ms poll timeout gives ~62 fps, close enough to FPS_DEFAULT.
@@ -36,32 +26,23 @@ const POLL_TIMEOUT_MS: i32 = 1000 / FPS_DEFAULT;
 // Maximum bytes read from stdin per input-reader iteration.
 const STDIN_READ_BUF: usize = 4096;
 
-// ---------------------------------------------------------------------------
-// Global signal-pipe write end
-//
-// Signal handlers cannot capture state.  g_sig_pipe_w is written once by
-// run() before sigaction() installs the handler.  Only one App may run at
-// a time, which is the expected usage.
-// ---------------------------------------------------------------------------
-
+// Global signal pipe (write end).
+// Required because sigaction doesn't take context. Initialized once in run().
+// (Limits us to one App instance per process, which is fine).
 var g_sig_pipe_w: std.posix.fd_t = -1;
 
-// Signal handler.
-// sigwinchHandler(sig: std.posix.SIG) matches Sigaction.handler_fn on
-// both Linux and macOS (std.posix.Sigaction is platform-appropriate on both).
-// sys.write() is used because it is async-signal-safe on both platforms.
+// SIGWINCH handler (cross-platform signature).
+// Must be async-signal-safe, hence the raw sys.write().
 fn sigwinchHandler(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
     const byte: [1]u8 = .{0};
     _ = sys.write(g_sig_pipe_w, byte[0..].ptr, 1);
 }
 
-// ---------------------------------------------------------------------------
-// Handlers -- the three callbacks the caller must implement
-// ---------------------------------------------------------------------------
+// Handlers >>
 
-/// Callback bundle for init / update / view.
-/// State is the application model type; MsgT is the message union type.
+/// The main app interface (init, update, view).
+/// State = your model, MsgT = your event union.
 pub fn Handlers(comptime State: type, comptime MsgT: type) type {
     return struct {
         /// Called once at startup. Returns the initial state AND an optional startup command.
@@ -82,17 +63,12 @@ pub fn Handlers(comptime State: type, comptime MsgT: type) type {
         ) anyerror![]u8,
     };
 }
-
-// ---------------------------------------------------------------------------
-// MsgQueue -- thread-safe multi-producer single-consumer queue
-//
-// Synchronization: atomic spinlock.  Correct for this low-contention,
-// short-hold workload (< 1 us per critical section, < 4 producers).
-// ---------------------------------------------------------------------------
-
+// Thread-safe MPSC queue.
+// We just use a dumb atomic spinlock here. The critical section is so short
+// (< 1us) and contention is so low (< 4 workers) that a real OS mutex is overkill.
 const MsgQueue = struct {
 
-    // ---- types -------------------------------------------------------------
+    // types
 
     /// Type-erased message.  Re-typed in the event loop.
     const AnyMsg = union(enum) {
@@ -100,13 +76,13 @@ const MsgQueue = struct {
         raw: *anyopaque, // from command worker threads (type-erased MsgT ptr)
     };
 
-    // ---- fields ------------------------------------------------------------
+    // fields
 
     items: std.ArrayList(AnyMsg),
     locked: std.atomic.Value(bool),
     alloc: std.mem.Allocator,
 
-    // ---- lifecycle ---------------------------------------------------------
+    // lifecycle
 
     fn init(allocator: std.mem.Allocator) MsgQueue {
         return .{
@@ -120,7 +96,7 @@ const MsgQueue = struct {
         self.items.deinit(self.alloc);
     }
 
-    // ---- producers ---------------------------------------------------------
+    // producers
 
     /// Push a parsed event from the input reader thread.
     fn pushEvent(self: *MsgQueue, ev: ansi.Event) error{OutOfMemory}!void {
@@ -137,7 +113,7 @@ const MsgQueue = struct {
         try self.items.append(self.alloc, .{ .raw = ptr });
     }
 
-    // ---- consumer ----------------------------------------------------------
+    // consumer
 
     /// Drain all pending messages.  Caller owns the returned slice.
     /// Returns an empty slice if nothing is pending.
@@ -150,7 +126,7 @@ const MsgQueue = struct {
         return copy;
     }
 
-    // ---- spinlock ----------------------------------------------------------
+    // spinlock
 
     fn acquire(self: *MsgQueue) void {
         while (self.locked.cmpxchgWeak(false, true, .acquire, .monotonic) != null) {
@@ -163,10 +139,7 @@ const MsgQueue = struct {
     }
 };
 
-// ---------------------------------------------------------------------------
 // InputReaderThread -- reads raw bytes from stdin, feeds the ANSI parser
-// ---------------------------------------------------------------------------
-
 const InputReaderThread = struct {
     stdin_fd: std.posix.fd_t,
     cmd_pipe_w: std.posix.fd_t,
@@ -207,10 +180,7 @@ fn inputReaderFn(args: *InputReaderThread) void {
     }
 }
 
-// ---------------------------------------------------------------------------
 // CmdWorker -- runs a .task on a worker thread
-// ---------------------------------------------------------------------------
-
 fn CmdWorker(comptime MsgT: type) type {
     return struct {
         task_ctx: *anyopaque,
@@ -240,13 +210,8 @@ fn CmdWorker(comptime MsgT: type) type {
     };
 }
 
-// ---------------------------------------------------------------------------
-// wakeLoop -- write a single wakeup byte to the command pipe
-//
-// Called from multiple threads.  sys.write() is async-signal-safe and
-// thread-safe on both Linux and macOS.
-// ---------------------------------------------------------------------------
-
+// Wakes the main loop via the command pipe.
+// Thread-safe and async-signal-safe (raw sys.write).
 inline fn wakeLoop(pipe_w: std.posix.fd_t) void {
     const byte: [1]u8 = .{0};
     _ = sys.write(pipe_w, byte[0..].ptr, 1);
@@ -261,13 +226,8 @@ fn flushOut(out_aw: *std.Io.Writer.Allocating, fd: std.posix.fd_t) void {
     out_aw.clearRetainingCapacity();
 }
 
-// ---------------------------------------------------------------------------
-// run() -- public entry point
-//
-// Blocks until update() returns Cmd.quit or an unrecoverable error occurs.
-// The terminal is restored before returning in all cases (except SIGKILL).
-// ---------------------------------------------------------------------------
-
+// Main event loop. Blocks until Cmd.quit or a fatal error.
+// Always cleans up and restores the terminal before returning.
 pub fn run(
     comptime State: type,
     comptime MsgT: type,
@@ -282,29 +242,25 @@ pub fn run(
     const stdin_fd = std.posix.STDIN_FILENO;
     const stdout_fd = std.posix.STDOUT_FILENO;
 
-    // ---- signal pipe -------------------------------------------------------
-
+    // signal pipe
     var sig_pipe: [2]std.posix.fd_t = undefined;
     try sys.initPipe(&sig_pipe);
     errdefer sys.closePipe(&sig_pipe);
     g_sig_pipe_w = sig_pipe[1];
 
-    // ---- command wakeup pipe -----------------------------------------------
-
+    // command wakeup pipe
     var cmd_pipe: [2]std.posix.fd_t = undefined;
     try sys.initPipe(&cmd_pipe);
     errdefer sys.closePipe(&cmd_pipe);
 
-    // ---- raw terminal mode -------------------------------------------------
-
+    // raw terminal mode
     // Restore termios FIRST in cleanup so output-processing flags are back
     // in effect when we emit escape sequences during teardown.
     const orig_termios = try std.posix.tcgetattr(stdin_fd);
     errdefer std.posix.tcsetattr(stdin_fd, .FLUSH, orig_termios) catch {};
     try setRawMode(stdin_fd);
 
-    // ---- SIGWINCH handler --------------------------------------------------
-
+    // SIGWINCH handler
     var old_sa: std.posix.Sigaction = undefined;
     const new_sa: std.posix.Sigaction = .{
         .handler = .{ .handler = sigwinchHandler },
@@ -314,27 +270,23 @@ pub fn run(
     std.posix.sigaction(std.posix.SIG.WINCH, &new_sa, &old_sa);
     errdefer std.posix.sigaction(std.posix.SIG.WINCH, &old_sa, null);
 
-    // ---- message queue -----------------------------------------------------
-
+    // message queue
     var queue = MsgQueue.init(alloc);
     defer queue.deinit();
 
-    // ---- initial terminal size ---------------------------------------------
-
+    // initial terminal size
     var term_cols: u16 = 80;
     var term_rows: u16 = 24;
     sys.queryTerminalSize(stdout_fd, &term_cols, &term_rows);
 
-    // ---- renderer ----------------------------------------------------------
-
+    // renderer
     var out_aw: std.Io.Writer.Allocating = .init(alloc);
     defer out_aw.deinit();
 
     var renderer = Renderer.init(alloc, &out_aw.writer, term_cols, term_rows);
     defer renderer.deinit();
 
-    // ---- input reader thread -----------------------------------------------
-
+    // input reader thread
     var stop_flag = std.atomic.Value(bool).init(false);
     var reader_state = InputReaderThread{
         .stdin_fd = stdin_fd,
@@ -350,8 +302,7 @@ pub fn run(
         reader_thread.join();
     }
 
-    // ---- user init ---------------------------------------------------------
-
+    // user init
     const init_result = try handlers.init(alloc);
     var state = init_result[0];
     const initial_cmd = init_result[1];
@@ -359,13 +310,12 @@ pub fn run(
     // Dispatch startup commands (spawns initial worker/timer threads)
     _ = try dispatchCmd(MsgT, initial_cmd, &queue, cmd_pipe[1], alloc);
 
-    // ---- query sync output support (mode 2026) -----------------------------
+    // query sync output support (mode 2026)
     // Emit DECRQM (ESC[?2026$p); the ModeReport event arrives later via the parser.
     out_aw.writer.writeAll("\x1B[?2026$p") catch {};
     flushOut(&out_aw, stdout_fd);
 
-    // ---- event loop --------------------------------------------------------
-
+    // event loop
     // v1 does not use the alternate screen.
     const using_alt_screen = false;
 
@@ -385,8 +335,7 @@ pub fn run(
         alloc,
     );
 
-    // ---- terminal restore --------------------------------------------------
-    //
+    // terminal restore
     // Order (reverse of setup):
     //   1. Restore termios (re-enables OPOST so escape sequences render)
     //   2. Show cursor
@@ -404,10 +353,7 @@ pub fn run(
     sys.closePipe(&cmd_pipe);
 }
 
-// ---------------------------------------------------------------------------
 // eventLoop -- inner loop, separated from run() for length discipline
-// ---------------------------------------------------------------------------
-
 fn eventLoop(
     comptime State: type,
     comptime MsgT: type,
@@ -432,7 +378,7 @@ fn eventLoop(
     var should_render = true;
 
     loop: while (true) {
-        // ---- render (at TOP of loop so frame 0 works perfectly) ----
+        // render (at TOP of loop so frame 0 works perfectly)
         if (should_render) {
             const frame = try handlers.view(state, alloc);
             defer alloc.free(frame);
@@ -444,14 +390,14 @@ fn eventLoop(
 
         _ = std.posix.poll(&fds, POLL_TIMEOUT_MS) catch break;
 
-        // ---- SIGWINCH (resize) -------------------------------------------
+        // SIGWINCH (resize)
         if (fds[0].revents & std.posix.POLL.IN != 0) {
             drainPipe(sig_pipe_r);
             try handleResize(MsgT, state, handlers, renderer, queue, cmd_pipe_w, stdout_fd, alloc);
             should_render = true;
         }
 
-        // ---- input / command wakeup --------------------------------------
+        // input / command wakeup
         if (fds[1].revents & std.posix.POLL.IN != 0) {
             drainPipe(cmd_pipe_r);
             const quit = try processQueue(MsgT, state, handlers, renderer, queue, cmd_pipe_w, alloc);
@@ -461,10 +407,7 @@ fn eventLoop(
     }
 }
 
-// ---------------------------------------------------------------------------
 // handleResize -- SIGWINCH processing
-// ---------------------------------------------------------------------------
-
 fn handleResize(
     comptime MsgT: type,
     state: anytype,
@@ -487,12 +430,7 @@ fn handleResize(
     }
 }
 
-// ---------------------------------------------------------------------------
-// processQueue -- drain and dispatch all pending messages
-//
-// Returns true if a .quit Cmd was encountered.
-// ---------------------------------------------------------------------------
-
+// Drains the message queue. Returns true on .quit.
 fn processQueue(
     comptime MsgT: type,
     state: anytype,
@@ -536,13 +474,8 @@ fn processQueue(
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// tryWrapEvent -- zero-cost comptime event dispatch
-//
-// Converts an ansi.Event to MsgT when MsgT has a matching field name/type.
-// Unmatched variants return null and generate no code after DCE.
-// ---------------------------------------------------------------------------
-
+// Comptime event dispatcher. Maps ansi.Events to MsgT where names/types match.
+// Unmatched events return null and compile away to nothing.
 fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
     const fields = @typeInfo(MsgT).@"union".fields;
     switch (ev) {
@@ -586,12 +519,7 @@ fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
     }
 }
 
-// ---------------------------------------------------------------------------
-// dispatchCmd -- execute a Cmd returned by update()
-//
-// Returns true if the event loop should exit (.quit received).
-// ---------------------------------------------------------------------------
-
+// Executes a Cmd from the update loop. Returns true on .quit.
 fn dispatchCmd(
     comptime MsgT: type,
     cmd_opt: ?Cmd(MsgT),
@@ -637,10 +565,7 @@ fn dispatchCmd(
     }
 }
 
-// ---------------------------------------------------------------------------
-// spawnWorker -- spawn a CmdWorker thread for a .task Cmd
-// ---------------------------------------------------------------------------
-
+// Spins up a background thread for a .task.
 fn spawnWorker(
     comptime MsgT: type,
     task_ctx: *anyopaque,
@@ -666,10 +591,7 @@ fn spawnWorker(
     t_handle.detach();
 }
 
-// ---------------------------------------------------------------------------
-// spawnAfterThread -- sleep ns then push msg
-// ---------------------------------------------------------------------------
-
+// Async timeout worker. Sleeps for `ns` then pushes the event.
 fn spawnAfterThread(
     comptime MsgT: type,
     ns: u64,
@@ -716,12 +638,9 @@ fn spawnAfterThread(
     t_handle.detach();
 }
 
-// ---------------------------------------------------------------------------
-// spawnEveryThread -- sleep ns, generate msg, push it
-//
-// The caller returns another .every from update() to keep ticking.
-// ---------------------------------------------------------------------------
-
+// Interval tick worker.
+// Fires a single delayed message. Needs to be explicitly re-queued
+// by returning another .every from update() to form a continuous loop.
 fn spawnEveryThread(
     comptime MsgT: type,
     ns: u64,
@@ -773,9 +692,7 @@ fn spawnEveryThread(
     t_handle.detach();
 }
 
-// ---------------------------------------------------------------------------
 // Terminal helpers (private)
-// ---------------------------------------------------------------------------
 
 /// Enter raw (non-canonical, no-echo) terminal mode.
 /// std.posix.tcgetattr / tcsetattr work on both Linux and macOS.
@@ -816,10 +733,6 @@ fn drainPipe(fd: std.posix.fd_t) void {
     var buf: [64]u8 = undefined;
     _ = std.posix.read(fd, &buf) catch {};
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "tryWrapEvent forwards key event when Msg has key variant" {
     const TestMsg = union(enum) { key: ansi.KeyEvent, other };
