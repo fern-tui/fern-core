@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-// cmd.zig - Cmd(MsgT): side-effect descriptor for the TEA runtime.
-//
-// Imports: std only.
-// No heap allocation anywhere in this file.
-
+// Cmd(MsgT): side-effect instructions.
+// Pure stdlib. Strictly zero heap allocations.
 const std = @import("std");
-
-// ---------------------------------------------------------------------------
-// Cmd(MsgT)
-// ---------------------------------------------------------------------------
 
 /// The return type of update().  Describes a side effect the runtime will
 /// execute on the caller's behalf.  All variants except .task are zero-copy.
@@ -55,10 +48,6 @@ pub fn Cmd(comptime MsgT: type) type {
     };
 }
 
-// ---------------------------------------------------------------------------
-// TickMsg — recommended payload for .every and .after
-// ---------------------------------------------------------------------------
-
 /// Suggested Msg variant for timer payloads.
 /// Include this as a field in your application's Msg union.
 pub const TickMsg = struct {
@@ -66,9 +55,7 @@ pub const TickMsg = struct {
     time: i64, // std.time.nanoTimestamp()
 };
 
-// ---------------------------------------------------------------------------
 // Convenience constructors
-// ---------------------------------------------------------------------------
 
 /// Return a .none Cmd.
 pub fn none(comptime MsgT: type) Cmd(MsgT) {
@@ -147,10 +134,6 @@ pub fn every(
 ) Cmd(MsgT) {
     return .{ .every = .{ .ns = ns, .id = id, .gen = gen } };
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Cmd none variant equals .none" {
     const TestMsg = union(enum) { ok, other };

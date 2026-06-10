@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-// progress.zig - animated progress bar widget.
-//
 // progress:  Supports solid fill or a per-cell RGB
 // gradient across the filled portion, animated percent display, and
 // spring-based smooth transition via fern_anim.
@@ -9,8 +7,6 @@
 // Default fill character is now FULL_FULL_BLOCK (█) for a continuous bar.
 // Gradient is enabled by default: full_color (low) → full_color_high.
 // Set use_gradient = false to revert to the single-colour path.
-//
-// Imports: std, fern_ansi, fern_style, fern_app, fern_anim.
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
@@ -18,17 +14,12 @@ const style = @import("fern_style");
 const app = @import("fern_app");
 const anim = @import("fern_anim");
 
-// ---------------------------------------------------------------------------
 // Fill characters
-// ---------------------------------------------------------------------------
-
 pub const FULL_HALF_BLOCK: []const u8 = "\xe2\x96\x8c"; // U+258C ▌ left half
 pub const FULL_FULL_BLOCK: []const u8 = "\xe2\x96\x88"; // U+2588 █ full block
 pub const EMPTY_BLOCK: []const u8 = "\xe2\x96\x91"; // U+2591 ░ light shade
 
-// ---------------------------------------------------------------------------
 // Gradient helpers (file-private)
-// ---------------------------------------------------------------------------
 
 /// Extract an RGB triple from any Color variant.
 /// Non-RGB variants fall back to the default purple so gradient math
@@ -50,16 +41,10 @@ fn lerpU8(a: u8, b: u8, t: f32) u8 {
     return @intFromFloat(@round(val));
 }
 
-// ---------------------------------------------------------------------------
-// FrameMsg -- drives spring animation
-// ---------------------------------------------------------------------------
-
+// drives spring animation
 pub const FrameMsg = struct { id: u32, tag: u32 };
 
-// ---------------------------------------------------------------------------
 // Progress
-// ---------------------------------------------------------------------------
-
 var next_id: std.atomic.Value(u32) = std.atomic.Value(u32).init(1);
 
 const FPS: u64 = 60;
@@ -89,13 +74,13 @@ pub const Progress = struct {
     percent_target: f32 = 0.0,
     velocity: f32 = 0.0,
 
-    // --- lifecycle ----------------------------------------------------------
+    // lifecycle
 
     pub fn init() Progress {
         return .{ .id = next_id.fetchAdd(1, .monotonic) };
     }
 
-    // --- setters ------------------------------------------------------------
+    // setters
 
     pub fn setWidth(self: *Progress, w: u16) void {
         self.width = w;
@@ -128,7 +113,7 @@ pub const Progress = struct {
         );
     }
 
-    // --- percent control ----------------------------------------------------
+    // percent control
 
     /// Set the target percent (0.0..1.0) and return an animation Cmd.
     /// MsgT must have a field `progress_frame: FrameMsg`.
@@ -162,7 +147,7 @@ pub const Progress = struct {
         } };
     }
 
-    // --- update -------------------------------------------------------------
+    // update
 
     pub fn update(
         self: Progress,
@@ -189,7 +174,7 @@ pub const Progress = struct {
         return !(dist < 0.001 and @abs(self.velocity) < 0.01);
     }
 
-    // --- view ---------------------------------------------------------------
+    // view
 
     /// Render the progress bar at the current animated percent.
     /// Caller owns the returned slice.
@@ -256,15 +241,9 @@ pub const Progress = struct {
     }
 };
 
-// ---------------------------------------------------------------------------
-// renderGradient — file-private; called only from viewAs
-//
-// Per-cell RGB escape sequences are written into `out` using stack buffers
-// (no heap allocation per cell) in line with hot-path discipline.
-// Maximum escape sequence length: "\x1b[38;2;255;255;255m" = 19 bytes.
-// The 24-byte buf always fits this, so bufPrint never returns NoSpaceLeft.
-// ---------------------------------------------------------------------------
-
+// renderGradient - internal helper.
+// Hot-path, strictly stack-allocated. Max RGB escape sequence is 19 bytes,
+// meaning our 24-byte buffer mathematically guarantees we never hit NoSpaceLeft.
 fn renderGradient(
     out: *std.ArrayList(u8),
     allocator: std.mem.Allocator,
@@ -301,10 +280,6 @@ fn renderGradient(
     // Reset once after the entire filled section, not per-cell.
     try out.appendSlice(allocator, "\x1b[0m");
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Progress init defaults" {
     const p = Progress.init();

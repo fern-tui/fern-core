@@ -1,31 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-// textinput.zig - single-line text input widget.
-//
+// single-line text input widget.
 // textinput:  Single line, horizontal scroll when width
 // is set.  Supports password echo, character limit, and validation.
 // No Cmd produced; all state is updated synchronously in update().
-//
-// Imports: std, fern_ansi, fern_style, key.zig.
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const style = @import("fern_style");
 const key = @import("key.zig");
 
-// ---------------------------------------------------------------------------
-// EchoMode
-// ---------------------------------------------------------------------------
-
 pub const EchoMode = enum {
     normal, // display as typed
     password, // display echo_char for every character
     none, // display nothing
 };
-
-// ---------------------------------------------------------------------------
-// KeyMap (mirrors bubbles/textinput)
-// ---------------------------------------------------------------------------
 
 pub const KeyMap = struct {
     char_forward: key.Binding = .{ .codes = &.{.right} },
@@ -49,16 +38,8 @@ fn isPrintable(ev: ansi.KeyEvent) bool {
     };
 }
 
-// ---------------------------------------------------------------------------
-// ValidateFunc
-// ---------------------------------------------------------------------------
-
 pub const ValidateError = error{Invalid};
 pub const ValidateFn = *const fn ([]const u32) ValidateError!void;
-
-// ---------------------------------------------------------------------------
-// Style set for focused / blurred states
-// ---------------------------------------------------------------------------
 
 pub const Styles = struct {
     focused: style.Style = style.Style.init(),
@@ -68,12 +49,8 @@ pub const Styles = struct {
         .fg_(.{ .ansi16 = .bright_black }), // bright black (dark gray)
 };
 
-// ---------------------------------------------------------------------------
-// TextInput
-// ---------------------------------------------------------------------------
-
 pub const TextInput = struct {
-    // --- config ---
+    // config
     prompt: []const u8 = "> ",
     placeholder: []const u8 = "",
     echo_mode: EchoMode = .normal,
@@ -84,15 +61,14 @@ pub const TextInput = struct {
     styles: Styles = .{},
     validate: ?ValidateFn = null,
 
-    // --- state ---
+    // state
     value: std.ArrayList(u32) = .empty, // codepoints
     pos: usize = 0,
     focus: bool = false,
     offset: usize = 0, // leftmost visible codepoint index (viewport scroll)
     err: ?ValidateError = null,
 
-    // --- lifecycle ----------------------------------------------------------
-
+    // lifecycle
     pub fn init() TextInput {
         return .{};
     }
@@ -101,8 +77,6 @@ pub const TextInput = struct {
         self.value.deinit(allocator);
     }
 
-    // --- focus --------------------------------------------------------------
-
     pub fn focus_(self: *TextInput) void {
         self.focus = true;
     }
@@ -110,7 +84,7 @@ pub const TextInput = struct {
         self.focus = false;
     }
 
-    // --- value access -------------------------------------------------------
+    // value access
 
     /// Write the current value as UTF-8 into buf.  Returns the written slice.
     pub fn valueUtf8(self: TextInput, buf: []u8) []u8 {
@@ -162,15 +136,12 @@ pub const TextInput = struct {
         self.err = null;
     }
 
-    // --- validation ---------------------------------------------------------
-
+    // validation
     fn runValidate(self: *TextInput) void {
         if (self.validate) |vfn| {
             self.err = if (vfn(self.value.items)) |_| null else |err| err;
         }
     }
-
-    // --- update -------------------------------------------------------------
 
     /// Handle a KeyEvent.  Returns true if the value changed (useful for
     /// the caller to decide whether to re-validate or send a message).
@@ -257,8 +228,7 @@ pub const TextInput = struct {
         return false;
     }
 
-    // --- offset (horizontal viewport) ---------------------------------------
-
+    // offset (horizontal viewport)
     fn updateOffset(self: *TextInput) void {
         if (self.width == 0) return;
         const visible: usize = self.width;
@@ -271,8 +241,6 @@ pub const TextInput = struct {
             self.offset = self.pos;
         }
     }
-
-    // --- view ---------------------------------------------------------------
 
     /// Render the text input.  Caller owns the returned slice.
     pub fn view(self: TextInput, allocator: std.mem.Allocator) ![]u8 {
@@ -334,7 +302,7 @@ pub const TextInput = struct {
     }
 };
 
-// --- word navigation helpers ------------------------------------------------
+// word navigation helpers
 
 fn wordStart(cps: []const u32, pos: usize) usize {
     if (pos == 0) return 0;
@@ -354,10 +322,6 @@ fn wordEnd(cps: []const u32, pos: usize) usize {
     while (i < cps.len and cps[i] != ' ') i += 1;
     return i;
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "TextInput init empty" {
     const ti = TextInput.init();

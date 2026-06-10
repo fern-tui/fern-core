@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-// border.zig - Border struct and 9 comptime preset constants
-//
-// Pure data.  No render logic.  No allocations.
-// Imported by style.zig.  Re-exported through root.zig.
-
+// Border struct and comptime presets.
+// Pure data container: zero logic, zero allocations.
 const std = @import("std");
 const ansi = @import("fern_ansi");
 
-// --- helpers -----------------------------------------------------------------
+// helpers
 
 // Returns the max cell width across all strings in parts.
 // Empty strings contribute 0.  Uses ansi.rawWidth (no ANSI strip needed
@@ -22,7 +19,7 @@ fn maxEdgeWidth(parts: []const []const u8) u16 {
     return max;
 }
 
-// --- Border struct -----------------------------------------------------------
+// Border struct
 
 pub const Border = struct {
     top: []const u8 = "",
@@ -72,10 +69,11 @@ pub const Border = struct {
     }
 };
 
-// --- preset constants --------------------------------------------------------
+// preset constants
 // All are comptime-known; SCREAMING_SNAKE per convention.
-
 pub const NONE: Border = .{};
+
+// <AI>
 
 // box-drawing light: standard single-line box characters
 pub const NORMAL: Border = .{
@@ -220,7 +218,7 @@ pub const ASCII: Border = .{
     .mid_bottom = "|",
 };
 
-// --- tests -------------------------------------------------------------------
+// </AI>
 
 test "Border NORMAL topSize returns 1" {
     try std.testing.expectEqual(@as(u16, 1), NORMAL.topSize());

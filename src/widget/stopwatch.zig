@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// stopwatch.zig - elapsed time stopwatch widget.
-//
 // stopwatch:  Counts up from zero.
 // Supports start, stop, toggle, and reset.
-//
-// Imports: std, fern_app.
-
 const std = @import("std");
 const app = @import("fern_app");
-
-// ---------------------------------------------------------------------------
-// Messages
-// ---------------------------------------------------------------------------
 
 // TickMsg is the only message the stopwatch emits.
 // StartStopMsg and ResetMsg have been removed: start(), stop(), and reset()
@@ -23,10 +14,6 @@ pub const TickMsg = struct {
     now: i64,
 };
 
-// ---------------------------------------------------------------------------
-// Stopwatch
-// ---------------------------------------------------------------------------
-
 var next_id: std.atomic.Value(u32) = std.atomic.Value(u32).init(1);
 
 pub const Stopwatch = struct {
@@ -36,7 +23,7 @@ pub const Stopwatch = struct {
     interval_ns: u64 = std.time.ns_per_s,
     running: bool = false,
 
-    // --- lifecycle ----------------------------------------------------------
+    // lifecycle
 
     pub fn init() Stopwatch {
         return .{ .id = next_id.fetchAdd(1, .monotonic) };
@@ -49,7 +36,7 @@ pub const Stopwatch = struct {
         };
     }
 
-    // --- state queries ------------------------------------------------------
+    // state queries
 
     pub fn running_(self: Stopwatch) bool {
         return self.running;
@@ -65,7 +52,7 @@ pub const Stopwatch = struct {
         return self.elapsed_ns / std.time.ns_per_s;
     }
 
-    // --- commands -----------------------------------------------------------
+    // commands
 
     // Start the stopwatch and begin ticking.
     // Sets running = true immediately via direct mutation.
@@ -115,8 +102,6 @@ pub const Stopwatch = struct {
         } };
     }
 
-    // --- update -------------------------------------------------------------
-
     // Call this from your update() when a `stopwatch_tick` message arrives.
     // Returns the updated Stopwatch and the next tick Cmd.
     // Returns cmd = null when the tick is stale or the stopwatch is stopped.
@@ -136,8 +121,6 @@ pub const Stopwatch = struct {
         return .{ .sw = sw, .cmd = sw.tickCmd(MsgT) };
     }
 
-    // --- view ---------------------------------------------------------------
-
     // Render elapsed time as "Xs" or "XmYs".
     // buf must be at least 16 bytes.
     pub fn view(self: Stopwatch, buf: []u8) []const u8 {
@@ -150,10 +133,6 @@ pub const Stopwatch = struct {
         return std.fmt.bufPrint(buf, "{d}m{d}s", .{ mins, secs }) catch "?m?s";
     }
 };
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Stopwatch init is stopped at zero" {
     const sw = Stopwatch.init();

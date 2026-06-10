@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-// timer.zig - countdown timer widget.
-//
 // timer:  Counts down from a timeout duration.
 // Uses Cmd(.every) to tick.  Emits TimeoutMsg when the timer reaches zero.
-//
-// Imports: std, fern_app.
 
 const std = @import("std");
 const app = @import("fern_app");
-
-// ---------------------------------------------------------------------------
-// Messages
-// ---------------------------------------------------------------------------
 
 pub const TickMsg = struct {
     id: u32,
@@ -28,10 +20,7 @@ pub const StartStopMsg = struct {
     running: bool,
 };
 
-// ---------------------------------------------------------------------------
 // Timer
-// ---------------------------------------------------------------------------
-
 var next_id: std.atomic.Value(u32) = std.atomic.Value(u32).init(1);
 
 pub const Timer = struct {
@@ -41,8 +30,7 @@ pub const Timer = struct {
     interval_ns: u64 = std.time.ns_per_s,
     running: bool = true,
 
-    // --- lifecycle ----------------------------------------------------------
-
+    // lifecycle
     pub fn init(timeout_ns: u64) Timer {
         return .{
             .id = next_id.fetchAdd(1, .monotonic),
@@ -58,8 +46,7 @@ pub const Timer = struct {
         return init(timeout_s * std.time.ns_per_s);
     }
 
-    // --- state queries ------------------------------------------------------
-
+    // state queries
     pub fn timedOut(self: Timer) bool {
         return self.timeout_ns <= 0;
     }
@@ -68,8 +55,7 @@ pub const Timer = struct {
         return self.running and !self.timedOut();
     }
 
-    // --- commands -----------------------------------------------------------
-
+    // commands
     /// Initial command to start the timer ticking.
     /// MsgT must have fields `timer_tick: TickMsg` and `timer_timeout: TimeoutMsg`.
     pub fn start(self: *Timer, comptime MsgT: type) app.Cmd(MsgT) {
@@ -120,8 +106,6 @@ pub const Timer = struct {
         } };
     }
 
-    // --- update -------------------------------------------------------------
-
     pub fn update(
         self: Timer,
         msg: TickMsg,
@@ -146,8 +130,6 @@ pub const Timer = struct {
         return t;
     }
 
-    // --- view ---------------------------------------------------------------
-
     /// Render remaining time as "Xs" (e.g. "10s", "500ms").
     pub fn view(self: Timer, buf: []u8) []const u8 {
         if (self.timeout_ns <= 0) return "0s";
@@ -160,10 +142,6 @@ pub const Timer = struct {
         return std.fmt.bufPrint(buf, "{d}ms", .{ms}) catch "?ms";
     }
 };
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Timer init not timed out" {
     const t = Timer.initS(10);

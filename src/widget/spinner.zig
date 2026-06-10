@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// spinner.zig - animated spinner widget.
-//
-// spinner:  Uses fern's Cmd(.every) for ticking.
-// The caller routes TickMsg back into update() to advance frames.
-//
-// Imports: std, fern_ansi, fern_style, fern_app (Cmd, TickMsg).
-
+// Simple animated spinner.
+// Requires Cmd.every integration: caller must route TickMsg back to
+// update() to drive animation frames.
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const style = @import("fern_style");
 const app = @import("fern_app");
 
-// ---------------------------------------------------------------------------
-// Spinner presets (mirrors bubbles exactly)
-// ---------------------------------------------------------------------------
-
+// Spinner presets
 pub const Preset = struct {
     frames: []const []const u8,
     /// Tick interval in nanoseconds.
@@ -62,10 +55,6 @@ pub const ELLIPSIS: Preset = .{
     .interval_ns = std.time.ns_per_s / 3,
 };
 
-// ---------------------------------------------------------------------------
-// TickMsg -- routed back to update() each tick
-// ---------------------------------------------------------------------------
-
 /// The message the runtime sends on each spinner tick.
 /// id must match the spinner's own id; tag must match to guard against stale ticks.
 pub const TickMsg = struct {
@@ -74,10 +63,7 @@ pub const TickMsg = struct {
     now: i64,
 };
 
-// ---------------------------------------------------------------------------
 // Spinner
-// ---------------------------------------------------------------------------
-
 /// Monotonically incrementing global ID counter.
 var next_id: std.atomic.Value(u32) = std.atomic.Value(u32).init(1);
 
@@ -88,7 +74,7 @@ pub const Spinner = struct {
     id: u32 = 0,
     tag: u32 = 0,
 
-    // --- lifecycle ----------------------------------------------------------
+    // lifecycle
 
     pub fn init() Spinner {
         return .{ .id = next_id.fetchAdd(1, .monotonic) };
@@ -98,7 +84,7 @@ pub const Spinner = struct {
         return .{ .preset = p, .id = next_id.fetchAdd(1, .monotonic) };
     }
 
-    // --- setters ------------------------------------------------------------
+    // setters
 
     pub fn setPreset(self: *Spinner, p: Preset) void {
         self.preset = p;
@@ -107,7 +93,7 @@ pub const Spinner = struct {
         self.style_ = s;
     }
 
-    // --- tick command -------------------------------------------------------
+    // tick command
 
     /// Returns a Cmd that fires a TickMsg after one interval.
     /// MsgT must have a field `spinner_tick: TickMsg`.
@@ -130,8 +116,6 @@ pub const Spinner = struct {
         } };
     }
 
-    // --- update -------------------------------------------------------------
-
     /// Handle a TickMsg.  Returns the updated spinner and an optional
     /// next-tick Cmd (null when the tick was rejected due to id/tag mismatch).
     pub fn update(
@@ -148,8 +132,6 @@ pub const Spinner = struct {
         return .{ .s = s, .cmd = s.tick(MsgT) };
     }
 
-    // --- view ---------------------------------------------------------------
-
     /// Render the current frame, applying the spinner's style.
     /// Caller owns the returned slice; free with allocator.free().
     pub fn view(self: Spinner, allocator: std.mem.Allocator) ![]u8 {
@@ -158,10 +140,6 @@ pub const Spinner = struct {
         return self.style_.render(allocator, frame_str);
     }
 };
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Spinner init has frame 0" {
     const s = Spinner.init();

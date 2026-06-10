@@ -1,25 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-// paginator.zig - pagination helper widget.
-//
-// paginator: Pure state: no Cmd, no ticking.
-// Handles page navigation math and renders Arabic or Dots indicators.
-//
-// Imports: std, fern_ansi (KeyEvent), key.zig.
-
+// Pagination helper.
+// Pure state only (no ticks, no Cmds). Crunches navigation math and renders
+// dot or numeric page indicators.
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const key = @import("key.zig");
 
-// ---------------------------------------------------------------------------
-// Display type
-// ---------------------------------------------------------------------------
-
 pub const DisplayType = enum { arabic, dots };
-
-// ---------------------------------------------------------------------------
-// KeyMap
-// ---------------------------------------------------------------------------
 
 pub const KeyMap = struct {
     prev_page: key.Binding = .{
@@ -34,10 +22,6 @@ pub const KeyMap = struct {
     },
 };
 
-// ---------------------------------------------------------------------------
-// Paginator
-// ---------------------------------------------------------------------------
-
 pub const Paginator = struct {
     display: DisplayType = .arabic,
     page: usize = 0,
@@ -48,13 +32,13 @@ pub const Paginator = struct {
     arabic_fmt: []const u8 = "{d}/{d}",
     keymap: KeyMap = .{},
 
-    // --- lifecycle ----------------------------------------------------------
+    // lifecycle
 
     pub fn init() Paginator {
         return .{};
     }
 
-    // --- helpers ------------------------------------------------------------
+    // helpers
 
     /// Set total_pages from total item count.
     pub fn setTotalPages(self: *Paginator, total_items: usize) void {
@@ -94,16 +78,12 @@ pub const Paginator = struct {
         if (!self.onLastPage()) self.page += 1;
     }
 
-    // --- update -------------------------------------------------------------
-
     /// Handle a KeyEvent.  Returns the (possibly updated) Paginator.
     pub fn update(self: Paginator, ev: ansi.KeyEvent) Paginator {
         var p = self;
         if (key.matches(ev, p.keymap.next_page)) p.nextPage() else if (key.matches(ev, p.keymap.prev_page)) p.prevPage();
         return p;
     }
-
-    // --- view ---------------------------------------------------------------
 
     /// Render the pagination indicator.
     /// Caller owns the returned slice; free with allocator.free().
@@ -132,10 +112,6 @@ pub const Paginator = struct {
         return allocator.dupe(u8, s);
     }
 };
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 test "Paginator setTotalPages divides evenly" {
     var p = Paginator.init();
