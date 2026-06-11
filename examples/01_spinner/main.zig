@@ -44,7 +44,7 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
 
     switch (msg) {
         .key => |k| {
-            if (isQuit(k)) {
+            if (widget.key.isQuit(k)) {
                 state.quitting = true;
                 return .quit;
             }
@@ -78,23 +78,6 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
 
     return out.toOwnedSlice(alloc);
 }
-
-// Helpers >>
-
-// check for exit keys (esc, q, ctrl+c)
-fn isQuit(k: ansi.KeyEvent) bool {
-    switch (k.code) {
-        .escape => return true,
-        .char => |c| {
-            if (c == 'q') return true;
-            if (c == 'c' and k.mods.ctrl) return true;
-        },
-        else => {},
-    }
-    return false;
-}
-
-// main >>
 
 // clears screen, spins forever, exits clean
 pub fn main(init_ctx: std.process.Init) !void {
