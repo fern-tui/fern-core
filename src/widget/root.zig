@@ -31,3 +31,7 @@ pub const Stopwatch = stopwatch.Stopwatch;
 pub const TextInput = textinput.TextInput;
 pub const Paginator = paginator.Paginator;
 pub const Viewport = viewport.Viewport;
+
+/// This exposes everything in key.zig as widget.key.Binding,
+/// widget.key.matches, widget.key.bind,...
+pub const key = @import("key.zig");

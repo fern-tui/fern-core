@@ -78,7 +78,7 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
 
     switch (msg) {
         .key => |k| {
-            if (isQuit(k)) return .quit;
+            if (widget.key.isQuit(k)) return .quit;
 
             // Once chosen, any key quits
             if (state.chosen != NONE) return .quit;
@@ -234,22 +234,6 @@ fn renderRow(
 
     try out.appendSlice(alloc, "\r\n");
 }
-
-// Helpers >>
-
-fn isQuit(k: ansi.KeyEvent) bool {
-    switch (k.code) {
-        .escape => return true,
-        .char => |c| {
-            if (c == 'q') return true;
-            if (c == 'c' and k.mods.ctrl) return true;
-        },
-        else => {},
-    }
-    return false;
-}
-
-// main >>
 
 pub fn main(init_ctx: std.process.Init) !void {
     _ = std.Io.File.stdout().writeStreamingAll(init_ctx.io, "\x1B[2J\x1B[H") catch {};

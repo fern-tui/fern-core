@@ -52,6 +52,13 @@ fn keyCodeEql(a: ansi.KeyCode, b: ansi.KeyCode) bool {
     };
 }
 
+pub fn isQuit(ev: ansi.KeyEvent) bool {
+    return switch (ev.code) {
+        .escape => true,
+        .char => |c| c == 'q' or (c == 'c' and ev.mods.ctrl),
+        else => false,
+    };
+}
 // Helpers to build Bindings concisely
 
 /// Build a Binding from a slice of KeyCode values.
