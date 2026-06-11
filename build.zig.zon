@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
-//
+
 // needed for zig fetch --save
-//
 // install: zig fetch --save https://github.com/fern-tui/fern-core/archive/.tar.gz
 // usage: b.dependency("fern_core", ...) in build.zig
-//
 // to get hash: zig fetch
 
 .{
     .name = .fern_core,
-    .version = "0.1.5",
+    .version = "0.1.5-beta.10+3604d61",
     .minimum_zig_version = "0.16.0",
     .license = .MIT,
 

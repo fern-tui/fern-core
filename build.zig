@@ -147,8 +147,8 @@ pub fn build(b: *std.Build) void {
     // Install those HTML files into zig-out/docs/ when the docs step runs.
     const install_docs = b.addInstallDirectory(.{
         .source_dir = emitted_docs,
-        .install_dir = .prefix,      // installs to zig-out/
-        .install_subdir = "docs",    // subdirectory: zig-out/docs/
+        .install_dir = .prefix, // installs to zig-out/
+        .install_subdir = "docs", // subdirectory: zig-out/docs/
     });
 
     // Create a top-level step named "docs".
