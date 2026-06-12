@@ -238,10 +238,11 @@ fn flushOut(out_aw: *std.Io.Writer.Allocating, fd: std.posix.fd_t) void {
 
 // Main event loop. Blocks until Cmd.quit or a fatal error.
 // Always cleans up and restores the terminal before returning.
-pub fn run(
+fn runImpl(
     comptime State: type,
     comptime MsgT: type,
     handlers: Handlers(State, MsgT),
+    opts: RunOptions,
     alloc: std.mem.Allocator,
 ) !void {
     // Comptime guard: MsgT must be a tagged union.
@@ -325,9 +326,14 @@ pub fn run(
     out_aw.writer.writeAll("\x1B[?2026$p") catch {};
     flushOut(&out_aw, stdout_fd);
 
-    // event loop
-    // v1 does not use the alternate screen.
-    const using_alt_screen = false;
+    // startup sequences
+    if (opts.hide_cursor) out_aw.writer.writeAll("\x1B[?25l") catch {};
+    if (opts.mouse) out_aw.writer.writeAll("\x1B[?1000h\x1B[?1006h") catch {};
+    if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049h") catch {};
+    flushOut(&out_aw, stdout_fd);
+
+    // poll timeout derived from requested fps
+    const poll_timeout_ms: i32 = @intCast(1000 / opts.fps);
 
     try eventLoop(
         State,
@@ -341,7 +347,8 @@ pub fn run(
         cmd_pipe[0],
         cmd_pipe[1],
         stdout_fd,
-        using_alt_screen,
+        opts.alt_screen,
+        poll_timeout_ms,
         alloc,
     );
 
@@ -354,6 +361,7 @@ pub fn run(
     //   5. Close pipes
 
     std.posix.tcsetattr(stdin_fd, .FLUSH, orig_termios) catch {};
+    if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049l") catch {}; // leave alt screen
     out_aw.writer.writeAll("\x1B[?25h") catch {}; // show cursor
     out_aw.writer.writeAll("\x1B[?1000l\x1B[?1006l") catch {}; // disable mouse
     flushOut(&out_aw, stdout_fd);
@@ -363,7 +371,29 @@ pub fn run(
     sys.closePipe(&cmd_pipe);
 }
 
-// eventLoop -- inner loop, separated from run() for length discipline
+// Main event loop. Blocks until Cmd.quit or a fatal error.
+// Always cleans up and restores the terminal before returning.
+pub fn run(
+    comptime State: type,
+    comptime MsgT: type,
+    handlers: Handlers(State, MsgT),
+    alloc: std.mem.Allocator,
+) !void {
+    return runImpl(State, MsgT, handlers, .{}, alloc);
+}
+
+/// like run() but accepts RunOptions to configure terminal behaviour.
+pub fn runOpts(
+    comptime State: type,
+    comptime MsgT: type,
+    handlers: Handlers(State, MsgT),
+    opts: RunOptions,
+    alloc: std.mem.Allocator,
+) !void {
+    return runImpl(State, MsgT, handlers, opts, alloc);
+}
+
+// eventLoop -- inner loop, separated from runImpl() for length discipline
 fn eventLoop(
     comptime State: type,
     comptime MsgT: type,
@@ -377,6 +407,7 @@ fn eventLoop(
     cmd_pipe_w: std.posix.fd_t,
     stdout_fd: std.posix.fd_t,
     using_alt_screen: bool,
+    poll_timeout_ms: i32,
     alloc: std.mem.Allocator,
 ) !void {
     var fds: [2]std.posix.pollfd = .{
@@ -398,7 +429,7 @@ fn eventLoop(
             should_render = false;
         }
 
-        _ = std.posix.poll(&fds, POLL_TIMEOUT_MS) catch break;
+        _ = std.posix.poll(&fds, poll_timeout_ms) catch break;
 
         // SIGWINCH (resize)
         if (fds[0].revents & std.posix.POLL.IN != 0) {
@@ -849,4 +880,40 @@ test "queryTerminalSize returns nonzero cols and rows on a TTY" {
     sys.queryTerminalSize(std.posix.STDOUT_FILENO, &cols, &rows);
     try std.testing.expect(cols > 0);
     try std.testing.expect(rows > 0);
+}
+
+test "RunOptions defaults match FPS_DEFAULT and all flags off" {
+    const opts = RunOptions{};
+    try std.testing.expectEqual(FPS_DEFAULT, opts.fps);
+    try std.testing.expect(!opts.alt_screen);
+    try std.testing.expect(!opts.mouse);
+    try std.testing.expect(!opts.hide_cursor);
+}
+
+test "RunOptions all fields can be overridden" {
+    const opts: RunOptions = .{
+        .alt_screen = true,
+        .fps = 30,
+        .mouse = true,
+        .hide_cursor = true,
+    };
+    try std.testing.expectEqual(@as(u32, 30), opts.fps);
+    try std.testing.expect(opts.alt_screen);
+    try std.testing.expect(opts.mouse);
+    try std.testing.expect(opts.hide_cursor);
+}
+
+test "poll_timeout_ms formula matches expected durations for common fps values" {
+    // mirrors the computation in runImpl: @intCast(1000 / opts.fps)
+    const Case = struct { fps: u32, ms: i32 };
+    const cases = [_]Case{
+        .{ .fps = 60, .ms = 16 },
+        .{ .fps = 30, .ms = 33 },
+        .{ .fps = 120, .ms = 8 },
+        .{ .fps = 1, .ms = 1000 },
+    };
+    for (cases) |c| {
+        const got: i32 = @intCast(1000 / c.fps);
+        try std.testing.expectEqual(c.ms, got);
+    }
 }

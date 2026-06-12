@@ -37,6 +37,7 @@ pub const run = @import("app.zig").run;
 
 /// runtime options for the event loop.
 pub const RunOptions = @import("app.zig").RunOptions;
+pub const runOpts = @import("app.zig").runOpts;
 
 // re-exported here because app.zig already owns sys.zig; callers can't import it directly.
 /// TIOCGWINSZ ioctl - writes cols and rows for the given fd
