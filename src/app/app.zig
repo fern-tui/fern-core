@@ -26,6 +26,16 @@ const POLL_TIMEOUT_MS: i32 = 1000 / FPS_DEFAULT;
 // Maximum bytes read from stdin per input-reader iteration.
 const STDIN_READ_BUF: usize = 4096;
 
+/// runtime options for the event loop.
+/// all fields default to the current behaviour, so existing
+/// run() calls are unaffected.
+pub const RunOptions = struct {
+    alt_screen: bool = false,
+    fps: u32 = FPS_DEFAULT,
+    mouse: bool = false,
+    hide_cursor: bool = false,
+};
+
 // Global signal pipe (write end).
 // Required because sigaction doesn't take context. Initialized once in run().
 // (Limits us to one App instance per process, which is fine).

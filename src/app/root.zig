@@ -35,6 +35,9 @@ pub const Handlers = @import("app.zig").Handlers;
 /// start the TEA event loop. blocks until update() returns quit.
 pub const run = @import("app.zig").run;
 
+/// runtime options passed to runOpts() and runSimple()
+pub const RunOptions = @import("app.zig").RunOptions;
+
 // re-exported here because app.zig already owns sys.zig; callers can't import it directly.
 /// TIOCGWINSZ ioctl - writes cols and rows for the given fd
 pub const queryTerminalSize = @import("sys.zig").queryTerminalSize;
