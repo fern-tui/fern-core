@@ -35,7 +35,7 @@ pub const Handlers = @import("app.zig").Handlers;
 /// start the TEA event loop. blocks until update() returns quit.
 pub const run = @import("app.zig").run;
 
-/// runtime options passed to runOpts() and runSimple()
+/// runtime options for the event loop.
 pub const RunOptions = @import("app.zig").RunOptions;
 
 // re-exported here because app.zig already owns sys.zig; callers can't import it directly.
