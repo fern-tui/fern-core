@@ -24,7 +24,7 @@ jobs:
       - name: Install Zig 0.16.0
         uses: mlugg/setup-zig@v1
         with:
-          version: 0.16.0
+          version: release-0.16.0
 
       # Check formatting before compiling. Saves time if the diff is dirty.
       - name: Check formatting
