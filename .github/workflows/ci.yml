@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Zig 0.16.0
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
 
       # Check formatting before compiling. Saves time if the diff is dirty.
       - name: Check formatting
