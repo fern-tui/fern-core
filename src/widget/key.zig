@@ -59,6 +59,37 @@ pub fn isQuit(ev: ansi.KeyEvent) bool {
         else => false,
     };
 }
+
+//directional helpers
+pub fn isUp(ev: ansi.KeyEvent) bool {
+    return switch (ev.code) {
+        .up => true,
+        .char => |c| c == 'k',
+        else => false,
+    };
+}
+pub fn isDown(ev: ansi.KeyEvent) bool {
+    return switch (ev.code) {
+        .down => true,
+        .char => |c| c == 'j',
+        else => false,
+    };
+}
+pub fn isLeft(ev: ansi.KeyEvent) bool {
+    return switch (ev.code) {
+        .left => true,
+        .char => |c| c == 'h',
+        else => false,
+    };
+}
+pub fn isRight(ev: ansi.KeyEvent) bool {
+    return switch (ev.code) {
+        .right => true,
+        .char => |c| c == 'l',
+        else => false,
+    };
+}
+
 // Helpers to build Bindings concisely
 
 /// Build a Binding from a slice of KeyCode values.
