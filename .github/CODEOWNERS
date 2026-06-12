@@ -1,0 +1,15 @@
+# CODEOWNERS
+# Every PR needs a review from a code owner before it can merge.
+# Patterns match from bottom to top. Last match wins.
+
+# Default: everything goes to the fern-tui team.
+*                           @fern-tui
+
+# Workflow files need explicit sign-off so CI changes cannot sneak in
+# without a maintainer looking at them.
+.github/workflows/          @fern-tui
+
+# build.zig and build.zig.zon touch the public API and the package
+# fingerprint. Same rule.
+build.zig                   @fern-tui
+build.zig.zon               @fern-tui

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing Guide
+    url: https://github.com/fern-tui/fern-core/blob/main/docs/CONTRIBUTING.md
+    about: Read this before opening an issue or PR.
+  - name: Code of Conduct
+    url: https://github.com/fern-tui/fern-core/blob/main/CODE_OF_CONDUCT.md
+    about: Participation standards and enforcement.
+  - name: Discussions
+    url: https://github.com/fern-tui/fern-core/discussions
+    about: Questions and anything that is not a bug or a feature request.

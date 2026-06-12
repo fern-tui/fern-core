@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Zig 0.16.0
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+
+      # Check formatting before compiling. Saves time if the diff is dirty.
+      - name: Check formatting
+        run: zig fmt --check src/ examples/ build.zig
+
+      - name: Build
+        run: zig build
+
+      # Linux needs the LLVM backend to avoid a GCC16/glibc2.43 relocation
+      # bug (R_X86_64_PC64). See the comment in build.zig for details.
+      - name: Test (Linux)
+        if: runner.os == 'Linux'
+        run: zig build test -Duse-llvm=true
+
+      - name: Test (macOS)
+        if: runner.os == 'macOS'
+        run: zig build test
