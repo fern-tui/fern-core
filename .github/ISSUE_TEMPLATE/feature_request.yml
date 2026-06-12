@@ -1,0 +1,61 @@
+name: Feature Request
+description: Propose a new widget, API, or behaviour change
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        fern is BDFN. The fern-tui team has final say on design.
+        Check open issues first. It may already be planned or declined.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe what is awkward or impossible today. Concrete is better than abstract.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What do you want?
+      description: Sketch the API. Rough pseudocode is fine. If you have multiple ideas, list them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else did you consider?
+      description: Other approaches and why you prefer your proposal.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which part of fern does this touch?
+      multiple: true
+      options:
+        - ansi
+        - anim
+        - style
+        - zone
+        - app (TEA runtime)
+        - widget (existing)
+        - widget (new)
+        - chart
+        - build system
+        - docs / examples
+        - other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing-to-pr
+    attributes:
+      label: Are you willing to implement this?
+      options:
+        - label: Yes, I will open a PR if the design is accepted.
+          required: false

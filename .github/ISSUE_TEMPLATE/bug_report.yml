@@ -1,0 +1,53 @@
+name: Bug Report
+description: Something is broken
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run `zig build test` on a clean checkout before filing.
+        If tests fail before your changes, open an issue about that first.
+
+  - type: input
+    id: zig-version
+    attributes:
+      label: Zig version
+      description: Output of `zig version`. Must be 0.16.0.
+      placeholder: "0.16.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect? What did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The shortest self-contained code that shows the bug. Inline if small, gist link if larger.
+      render: zig
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Stack trace, terminal output, anything else relevant.
+    validations:
+      required: false
