@@ -39,6 +39,9 @@ pub const run = @import("app.zig").run;
 pub const RunOptions = @import("app.zig").RunOptions;
 pub const runOpts = @import("app.zig").runOpts;
 
+/// convenience entry point: manages arena and process exit. no init_ctx needed.
+pub const runSimple = @import("app.zig").runSimple;
+
 // re-exported here because app.zig already owns sys.zig; callers can't import it directly.
 /// TIOCGWINSZ ioctl - writes cols and rows for the given fd
 pub const queryTerminalSize = @import("sys.zig").queryTerminalSize;
