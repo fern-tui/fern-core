@@ -21,7 +21,6 @@ pub fn build(b: *std.Build) void {
     // Upstream linker issue: Zig's self-hosted linker can't handle the .sframe relocations
     // (R_X86_64_PC64) coming from recent GCC16/glibc updates.
     // Issue: https://codeberg.org/ziglang/zig/issues/30959
-    //
     // Workaroun: bypass the internal linker using `zig build test -Duse-llvm=true`
     const use_llvm = b.option(bool, "use-llvm", "force LLVM backend (GCC16/glibc2.43+ sframe workaround)") orelse null;
 
@@ -520,4 +519,25 @@ pub fn build(b: *std.Build) void {
     const run_list = b.addRunArtifact(list_exe);
     const example_list_step = b.step("example-list", "Run examples/03_list");
     example_list_step.dependOn(&run_list.step);
+
+    // minimal example >
+    const minimal_exe = b.addExecutable(.{
+        .name = "minimal",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/00_minimal/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    minimal_exe.root_module.addImport("fern_ansi", ansi_mod);
+    minimal_exe.root_module.addImport("fern_style", style_mod);
+    minimal_exe.root_module.addImport("fern_app", app_mod);
+    minimal_exe.root_module.addImport("fern_widget", widget_mod);
+
+    if (needs_libc) minimal_exe.root_module.link_libc = true;
+    b.installArtifact(minimal_exe);
+
+    const run_minimal = b.addRunArtifact(minimal_exe);
+    const example_minimal_step = b.step("example-minimal", "Run examples/00_minimal");
+    example_minimal_step.dependOn(&run_minimal.step);
 }
