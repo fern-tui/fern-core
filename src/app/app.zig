@@ -371,6 +371,7 @@ fn runImpl(
     sys.closePipe(&cmd_pipe);
 }
 
+// TODO: have to fix the run enterface laterr...
 // Main event loop. Blocks until Cmd.quit or a fatal error.
 // Always cleans up and restores the terminal before returning.
 pub fn run(
@@ -393,7 +394,23 @@ pub fn runOpts(
     return runImpl(State, MsgT, handlers, opts, alloc);
 }
 
-// eventLoop -- inner loop, separated from runImpl() for length discipline
+/// Zero-boilerplate application bootstrap...
+/// Wraps the run loop in an Arena, managges terminal state, and handles clean
+/// exits. Keeps your `main()` completely free of memory and context plumbeng.
+pub fn runSimple(
+    comptime State: type,
+    comptime MsgT: type,
+    handlers: Handlers(State, MsgT),
+    opts: RunOptions,
+) !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    try runImpl(State, MsgT, handlers, opts, arena.allocator());
+    _ = sys.write(std.posix.STDOUT_FILENO, "\n".ptr, 1);
+    std.process.exit(0);
+}
+
+// inner loop, separated from runImpl() for length discipline
 fn eventLoop(
     comptime State: type,
     comptime MsgT: type,
@@ -448,7 +465,7 @@ fn eventLoop(
     }
 }
 
-// handleResize -- SIGWINCH processing
+// SIGWINCH processing
 fn handleResize(
     comptime MsgT: type,
     state: anytype,
