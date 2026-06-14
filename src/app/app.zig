@@ -590,18 +590,37 @@ fn dispatchCmd(
     switch (c) {
         .none => return false,
         .quit => return true,
-
         .batch => |cmds| {
-            for (cmds) |sub| {
-                if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+            const INLINE_CAP: usize = 16;
+            if (cmds.len <= INLINE_CAP) {
+                var snap: [INLINE_CAP]Cmd(MsgT) = undefined;
+                @memcpy(snap[0..cmds.len], cmds);
+                for (snap[0..cmds.len]) |sub| {
+                    if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+                }
+            } else {
+                const heap_snap = try alloc.dupe(Cmd(MsgT), cmds);
+                defer alloc.free(heap_snap);
+                for (heap_snap) |sub| {
+                    if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+                }
             }
             return false;
         },
-
-        // v1: treats .sequence as concurrent (ordered delivery deferred to v2).
-        .sequence => |cmds| {
-            for (cmds) |sub| {
-                if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+        .sequence => |seq_cmds| {
+            const INLINE_CAP: usize = 16;
+            if (seq_cmds.len <= INLINE_CAP) {
+                var snap: [INLINE_CAP]Cmd(MsgT) = undefined;
+                @memcpy(snap[0..seq_cmds.len], seq_cmds);
+                for (snap[0..seq_cmds.len]) |sub| {
+                    if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+                }
+            } else {
+                const heap_snap = try alloc.dupe(Cmd(MsgT), seq_cmds);
+                defer alloc.free(heap_snap);
+                for (heap_snap) |sub| {
+                    if (try dispatchCmd(MsgT, sub, queue, cmd_pipe_w, alloc)) return true;
+                }
             }
             return false;
         },
