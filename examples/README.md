@@ -24,3 +24,11 @@ The `spinner` example demonstrates a spinner bubble being used to indicate loadi
 <a href="../examples/01_spinner/main.zig">
   <img width="350" src="../docs/assets/spinner.gif" />
 </a>
+
+### Text Input
+
+The `textinput` example demonstrates a simple fern application using a `textinput` widget.
+
+<a href="../examples/04_textinput/main.zig">
+  <img width="350" src="../docs/assets/textinput.gif" />
+</a>

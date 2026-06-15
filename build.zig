@@ -540,4 +540,25 @@ pub fn build(b: *std.Build) void {
     const run_minimal = b.addRunArtifact(minimal_exe);
     const example_minimal_step = b.step("example-minimal", "Run examples/00_minimal");
     example_minimal_step.dependOn(&run_minimal.step);
+
+    // textinput example >
+    const textinput_exe = b.addExecutable(.{
+        .name = "textinput",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/04_textinput/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    textinput_exe.root_module.addImport("fern_ansi", ansi_mod);
+    textinput_exe.root_module.addImport("fern_style", style_mod);
+    textinput_exe.root_module.addImport("fern_app", app_mod);
+    textinput_exe.root_module.addImport("fern_widget", widget_mod);
+
+    if (needs_libc) textinput_exe.root_module.link_libc = true;
+    b.installArtifact(textinput_exe);
+
+    const run_textinput = b.addRunArtifact(textinput_exe);
+    const example_textinput_step = b.step("example-textinput", "Run examples/04_textinput");
+    example_textinput_step.dependOn(&run_textinput.step);
 }
