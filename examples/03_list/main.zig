@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// simple list: arrows or j/k to move, enter to select, q to quit.
+// arrows or j/k to move, enter to select, q to quit.
 // compact layout, dots paginator, no extra ui.
-//
-// run: zig build example-list
+// zig build example-list
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const style = @import("fern_style");
 const app = @import("fern_app");
 const widget = @import("fern_widget");
-
 const ITEMS = [_][]const u8{
     "Ramen",
     "Tomato Soup",
@@ -20,59 +18,32 @@ const ITEMS = [_][]const u8{
     "Okonomiyaki",
     "Pasta",
 };
-
 const PAGE_SIZE: usize = 5;
-
+const INDENT = "    ";
 const Msg = union(enum) {
     key: ansi.KeyEvent,
 };
-
-// State >>
-
-// NONE == ITEMS.len: sentinel meaning the user has not committed to a meal yet.
 const NONE: usize = ITEMS.len;
-
 const State = struct {
-    cursor: usize = 0,
-    pag: widget.Paginator,
+    list: widget.List,
     chosen: usize = NONE,
 };
-
-// Styles >>
-
-// Bold white
 const PROMPT_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .rgb = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF } });
-
-// Bold magenta
-const SELECTED_STYLE = style.Style.init().bold_(true)
-    .fg_(.{ .ansi16 = .bright_magenta });
-
-// Dim grey
 const DIM_STYLE = style.Style.init()
     .fg_(.{ .ansi16 = .bright_black });
-
-// Bold green
 const DONE_STYLE = style.Style.init().bold_(true)
     .fg_(.{ .rgb = .{ .r = 0x04, .g = 0xB5, .b = 0x75 } });
-
-// init >>
 
 fn init(alloc: std.mem.Allocator) !struct { State, ?app.Cmd(Msg) } {
     _ = alloc;
 
-    var pag = widget.Paginator.init();
-    pag.display = .dots;
-    pag.per_page = PAGE_SIZE;
-    pag.setTotalPages(ITEMS.len);
-    pag.active_dot = "\xe2\x97\x8f ";
-    pag.inactive_dot = "\xe2\x97\x8b ";
+    var list = widget.List.init(&ITEMS, PAGE_SIZE);
+    list.indent = INDENT;
+    list.pag_display = .dots;
 
-    return .{ .{ .pag = pag }, null };
+    return .{ .{ .list = list }, null };
 }
-
-// update >>
-
 fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
     _ = alloc;
 
@@ -80,39 +51,17 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
         .key => |k| {
             if (widget.key.isQuit(k)) return .quit;
 
-            // Once chosen, any key quits
+            // Once chosen, any key quits.
             if (state.chosen != NONE) return .quit;
 
             switch (k.code) {
-                .up => moveCursor(state, -1),
-                .down => moveCursor(state, 1),
-                .char => |c| {
-                    if (c == 'k') moveCursor(state, -1);
-                    if (c == 'j') moveCursor(state, 1);
-                },
-                .enter => state.chosen = state.cursor,
-                else => {},
+                .enter => state.chosen = state.list.selectedIndex(),
+                else => state.list = state.list.update(k),
             }
         },
     }
     return null;
 }
-
-// move cursor and keep in bounds. sync paginator dots.
-fn moveCursor(state: *State, delta: i2) void {
-    if (delta < 0 and state.cursor > 0) {
-        state.cursor -= 1;
-    } else if (delta > 0 and state.cursor < ITEMS.len - 1) {
-        state.cursor += 1;
-    }
-    // Dots follow the cursor.  Everyone follows someone.
-    state.pag.page = state.cursor / PAGE_SIZE;
-}
-
-// view >>
-
-const INDENT = "    ";
-
 fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
@@ -123,13 +72,13 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     if (state.chosen != NONE) {
         try renderDone(&out, alloc, state.chosen);
     } else {
-        try renderList(&out, alloc, state);
+        try renderList(&out, alloc, &state.list);
     }
 
     return out.toOwnedSlice(alloc);
 }
 
-// Render the confirmation screen: item name + the program's only opinion.
+// Render the confirmation screen: item name with the program's only opinion.
 fn renderDone(out: *std.ArrayList(u8), alloc: std.mem.Allocator, chosen: usize) !void {
     var buf: [128]u8 = undefined;
     const plain = try std.fmt.bufPrint(&buf, "{s}? Sounds good to me.", .{ITEMS[chosen]});
@@ -143,8 +92,8 @@ fn renderDone(out: *std.ArrayList(u8), alloc: std.mem.Allocator, chosen: usize) 
     try out.appendSlice(alloc, "\r\n");
 }
 
-// Render the interactive list: prompt, numbered rows, paginator, help bar.
-fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const State) !void {
+// Render the interactive list: prompt, the List widget's rows with dots, help bar.
+fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, list: *const widget.List) !void {
     const prompt = try PROMPT_STYLE.render(alloc, "1: What do you want for dinner?");
     defer alloc.free(prompt);
 
@@ -153,31 +102,23 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
     try out.appendSlice(alloc, prompt);
     try out.appendSlice(alloc, "\r\n\r\n");
 
-    // item rows >
-    // Only render the slice for the current page.
-    const page_start = state.pag.page * PAGE_SIZE;
-    const page_end = @min(page_start + PAGE_SIZE, ITEMS.len);
-
-    var row: usize = page_start;
-    while (row < page_end) : (row += 1) {
-        try renderRow(out, alloc, row, state.cursor);
-    }
-
-    // paginator dots >
-    try out.appendSlice(alloc, "\r\n");
-    try out.appendSlice(alloc, INDENT);
-
+    // List.view() joins rows (and the dot indicator) with '\n'; the
+    // renderer wants '\r\n' between lines, so re-join on the way out.
     {
-        const dots_plain = try state.pag.view(alloc);
-        defer alloc.free(dots_plain);
-        const dots = try DIM_STYLE.render(alloc, dots_plain);
-        defer alloc.free(dots);
-        try out.appendSlice(alloc, dots);
+        const body = try list.view(alloc);
+        defer alloc.free(body);
+
+        var lines = std.mem.splitScalar(u8, body, '\n');
+        var first = true;
+        while (lines.next()) |line| {
+            if (!first) try out.appendSlice(alloc, "\r\n");
+            first = false;
+            try out.appendSlice(alloc, line);
+        }
     }
 
-    try out.appendSlice(alloc, "\r\n");
+    try out.appendSlice(alloc, "\r\n\r\n");
 
-    // help bar >
     {
         const help = try DIM_STYLE.render(
             alloc,
@@ -185,51 +126,6 @@ fn renderList(out: *std.ArrayList(u8), alloc: std.mem.Allocator, state: *const S
         );
         defer alloc.free(help);
         try out.appendSlice(alloc, help);
-    }
-
-    try out.appendSlice(alloc, "\r\n");
-}
-
-// Render one list row.  Heap slices freed explicitly -- no defer-in-loop
-fn renderRow(
-    out: *std.ArrayList(u8),
-    alloc: std.mem.Allocator,
-    row: usize,
-    cursor: usize,
-) !void {
-    const is_selected = (row == cursor);
-
-    // Number prefix on the stack: "1. " .. "99. "  Stacks are free.
-    var num_buf: [8]u8 = undefined;
-    const num = try std.fmt.bufPrint(&num_buf, "{d}. ", .{row + 1});
-
-    try out.appendSlice(alloc, INDENT);
-
-    if (is_selected) {
-        // "> " glyph -- allocate, stomp the terminal, free.
-        {
-            const glyph = try SELECTED_STYLE.render(alloc, "> ");
-            defer alloc.free(glyph);
-            try out.appendSlice(alloc, glyph);
-        }
-
-        // Number + name coloured in its own block; style leaks nowhere.
-        var item_buf: [256]u8 = undefined;
-        const item_plain = try std.fmt.bufPrint(&item_buf, "{s}{s}", .{ num, ITEMS[row] });
-        {
-            const item_col = try SELECTED_STYLE.render(alloc, item_plain);
-            defer alloc.free(item_col);
-            try out.appendSlice(alloc, item_col);
-        }
-    } else {
-        // Unselected: plain text.  Two leading spaces align with "> " width.
-        var item_buf: [256]u8 = undefined;
-        const item_plain = try std.fmt.bufPrint(
-            &item_buf,
-            "  {s}{s}",
-            .{ num, ITEMS[row] },
-        );
-        try out.appendSlice(alloc, item_plain);
     }
 
     try out.appendSlice(alloc, "\r\n");
