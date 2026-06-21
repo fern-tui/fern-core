@@ -2,7 +2,6 @@
 
 // animated progress bar. ticks 25% per second.
 // uses spring easing and rgb gradients.
-//
 // zig build example-progress
 
 const std = @import("std");
@@ -11,16 +10,11 @@ const style = @import("fern_style");
 const app = @import("fern_app");
 const widget = @import("fern_widget");
 
-// Msg >>
-
 const Msg = union(enum) {
     key: ansi.KeyEvent,
     progress_frame: widget.progress.FrameMsg,
     tick: void,
 };
-
-// State >>
-// a progress bar and a done flag.
 
 const State = struct {
     progress: widget.Progress,
@@ -42,19 +36,17 @@ fn tickCmd() app.Cmd(Msg) {
     } };
 }
 
-// Styles >>
-
+// Styles
 const TITLE_STYLE = style.Style.init().bold_(true)
-    .fg_(.{ .rgb = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF } }); // white
+    .fg_(.{ .rgb = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF } });
 
 const DIM_STYLE = style.Style.init()
-    .fg_(.{ .ansi16 = .bright_black }); // dark
+    .fg_(.{ .ansi16 = .bright_black });
 
 const DONE_STYLE = style.Style.init().bold_(true)
-    .fg_(.{ .rgb = .{ .r = 0x04, .g = 0xB5, .b = 0x75 } }); // green
+    .fg_(.{ .rgb = .{ .r = 0x04, .g = 0xB5, .b = 0x75 } });
 
 // Handlers
-
 fn initState(alloc: std.mem.Allocator) !State {
     _ = alloc;
     var p = widget.Progress.init();
@@ -105,9 +97,6 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
 
-    // Full clear + cursor home to avoids partial-line flicker.
-    try out.appendSlice(alloc, "\x1B[2J\x1B[H");
-
     // Query live terminal size so centering adapts to any window.
     // Defaults (80x24) are used if the ioctl fails (e.g. piped output).
     var term_cols: u16 = 80;
@@ -118,13 +107,13 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     const title = if (state.done)
         try DONE_STYLE.render(alloc, "> Download complete!")
     else
-        try TITLE_STYLE.render(alloc, "> Downloading fern....");
+        try TITLE_STYLE.render(alloc, "> Downloading fern..");
     defer alloc.free(title);
 
     const bar = try state.progress.view(alloc);
     defer alloc.free(bar);
 
-    const hint = try DIM_STYLE.render(alloc, "press any key to quit (Enter ↵)");
+    const hint = try DIM_STYLE.render(alloc, "press any key to quit !!");
     defer alloc.free(hint);
 
     // Measure visible widths
@@ -160,8 +149,6 @@ fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
     return out.toOwnedSlice(alloc);
 }
 
-// App wrapper >>
-
 const AppState = struct {
     inner: State,
 
@@ -178,23 +165,11 @@ const AppState = struct {
     }
 };
 
-pub fn main(init_ctx: std.process.Init) !void {
-    // Enter alternate screen and hide cursor.
-    try std.Io.File.stdout().writeStreamingAll(init_ctx.io, "\x1B[?1049h\x1B[?25l");
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const alloc = arena.allocator();
-
-    app.run(AppState, Msg, .{
-        .init = AppState.appInit,
-        .update = AppState.appUpdate,
-        .view = AppState.appView,
-    }, alloc) catch |err| {
-        try std.Io.File.stdout().writeStreamingAll(init_ctx.io, "\x1B[?1049l\x1B[?25h");
-        return err;
-    };
-
-    // Leave alternate screen and restore cursor
-    try std.Io.File.stdout().writeStreamingAll(init_ctx.io, "\x1B[?1049l\x1B[?25h");
-    std.process.exit(0);
+pub fn main(_: std.process.Init) !void {
+    try app.runSimple(AppState, Msg, .{
+            .init  = AppState.appInit,
+            .update = AppState.appUpdate,
+            .view  = AppState.appView,
+        }, .{ .alt_screen = true, .hide_cursor = true }
+    );
 }

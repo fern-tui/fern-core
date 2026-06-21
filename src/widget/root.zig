@@ -23,6 +23,14 @@ pub const paginator = @import("paginator.zig");
 /// scrollable viewport into content. fixed w x h window, no Cmd.
 pub const viewport = @import("viewport.zig");
 
+/// Cursor-driven selection list over a caller-owned slice of string items.
+pub const list = @import("list.zig");
+
+/// Scrollable multi-column data grid with cursor-driven row selection.
+/// Visible rows are windowed around the cursor; optional border via
+/// fern_style's Border presets. No Cmd, pure math.
+pub const table = @import("table.zig");
+
 // shorthand - widget.Spinner instead of widget.spinner.Spinner
 pub const Spinner = spinner.Spinner;
 pub const Progress = progress.Progress;
@@ -31,6 +39,8 @@ pub const Stopwatch = stopwatch.Stopwatch;
 pub const TextInput = textinput.TextInput;
 pub const Paginator = paginator.Paginator;
 pub const Viewport = viewport.Viewport;
+pub const List = list.List;
+pub const Table = table.Table;
 
 /// This exposes everything in key.zig as widget.key.Binding,
 /// widget.key.matches, widget.key.bind,...

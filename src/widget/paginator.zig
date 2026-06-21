@@ -27,8 +27,8 @@ pub const Paginator = struct {
     page: usize = 0,
     per_page: usize = 1,
     total_pages: usize = 1,
-    active_dot: []const u8 = "\xe2\x80\xa2", // •
-    inactive_dot: []const u8 = "\xe2\x97\x8b", // ○
+    active_dot: []const u8 = "\xe2\x97\x8f\x20", // ● (U+25CF Black Circle)
+    inactive_dot: []const u8 = "\xe2\x97\x8b\x20", // ○ (U+25CB White Circle)
     arabic_fmt: []const u8 = "{d}/{d}",
     keymap: KeyMap = .{},
 
