@@ -167,9 +167,8 @@ const AppState = struct {
 
 pub fn main(_: std.process.Init) !void {
     try app.runSimple(AppState, Msg, .{
-            .init  = AppState.appInit,
-            .update = AppState.appUpdate,
-            .view  = AppState.appView,
-        }, .{ .alt_screen = true, .hide_cursor = true }
-    );
+        .init = AppState.appInit,
+        .update = AppState.appUpdate,
+        .view = AppState.appView,
+    }, .{ .alt_screen = true, .hide_cursor = true });
 }

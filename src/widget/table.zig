@@ -281,10 +281,10 @@ pub const Table = struct {
     fn appendHorizontalRule(
         self: Table,
         out: *std.ArrayList(u8),
-                            allocator: std.mem.Allocator,
-                            left: []const u8,
-                            junction: []const u8,
-                            right: []const u8,
+        allocator: std.mem.Allocator,
+        left: []const u8,
+        junction: []const u8,
+        right: []const u8,
     ) !void {
         var line: std.ArrayList(u8) = .empty;
         defer line.deinit(allocator);
@@ -316,9 +316,9 @@ pub const Table = struct {
     fn appendCellContent(
         self: Table,
         out: *std.ArrayList(u8),
-                         allocator: std.mem.Allocator,
-                         texts: []const []const u8,
-                         border_active: bool,
+        allocator: std.mem.Allocator,
+        texts: []const []const u8,
+        border_active: bool,
     ) !void {
         const b = self.border_style;
         const divider: []const u8 = if (border_active) b.left else "";
@@ -352,10 +352,10 @@ pub const Table = struct {
     fn appendRowLine(
         self: Table,
         out: *std.ArrayList(u8),
-                     allocator: std.mem.Allocator,
-                     texts: []const []const u8,
-                     row_style: style.Style,
-                     border_active: bool,
+        allocator: std.mem.Allocator,
+        texts: []const []const u8,
+        row_style: style.Style,
+        border_active: bool,
     ) !void {
         const b = self.border_style;
 
@@ -382,8 +382,8 @@ pub const Table = struct {
     fn appendHeaderLine(
         self: Table,
         out: *std.ArrayList(u8),
-                        allocator: std.mem.Allocator,
-                        border_active: bool,
+        allocator: std.mem.Allocator,
+        border_active: bool,
     ) !void {
         const titles = try allocator.alloc([]const u8, self.columns.len);
         defer allocator.free(titles);
@@ -394,10 +394,10 @@ pub const Table = struct {
     fn appendDataLine(
         self: Table,
         out: *std.ArrayList(u8),
-                      allocator: std.mem.Allocator,
-                      row: Row,
-                      is_selected: bool,
-                      border_active: bool,
+        allocator: std.mem.Allocator,
+        row: Row,
+        is_selected: bool,
+        border_active: bool,
     ) !void {
         const row_style = if (is_selected) self.selected_style else self.cell_style;
         try self.appendRowLine(out, allocator, row, row_style, border_active);
