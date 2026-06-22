@@ -24,40 +24,38 @@ pub fn build(b: *std.Build) void {
     // Workaroun: bypass the internal linker using `zig build test -Duse-llvm=true`
     const use_llvm = b.option(bool, "use-llvm", "force LLVM backend (GCC16/glibc2.43+ sframe workaround)") orelse null;
 
-    // macos needs libc since apple hides raw syscalls.
-    // linux talks directly to the kernel and skips libc.
-    // leaving linkLibC() on is fine for both anyway.
     const needs_libc: bool = target.result.os.tag == .macos or
         target.result.os.tag == .linux;
 
-    // libraries >>
+    // public modules >>
+
+    const ansi_mod = b.addModule("fern_ansi", .{
+        .root_source_file = b.path("src/ansi/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const ansi_lib = b.addLibrary(.{
         .name = "fern_ansi",
         .linkage = .static,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/ansi/root.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = ansi_mod,
     });
     b.installArtifact(ansi_lib);
+
+    const anim_mod = b.addModule("fern_anim", .{
+        .root_source_file = b.path("src/anim/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const anim_lib = b.addLibrary(.{
         .name = "fern_anim",
         .linkage = .static,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/anim/root.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = anim_mod,
     });
     b.installArtifact(anim_lib);
 
-    // ansi_mod: used by style, zone, and app
-    const ansi_mod = ansi_lib.root_module;
-
-    const style_mod = b.createModule(.{
+    const style_mod = b.addModule("fern_style", .{
         .root_source_file = b.path("src/style/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -71,7 +69,7 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(style_lib);
 
-    const zone_mod = b.createModule(.{
+    const zone_mod = b.addModule("fern_zone", .{
         .root_source_file = b.path("src/zone/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -90,7 +88,7 @@ pub fn build(b: *std.Build) void {
     // app/ files: root, cmd, render, app.
     // sys.zig is internal. app.zig imports it by path, so no addImport is needed.
 
-    const app_mod = b.createModule(.{
+    const app_mod = b.addModule("fern_app", .{
         .root_source_file = b.path("src/app/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -113,7 +111,7 @@ pub fn build(b: *std.Build) void {
     // pure zig, no libc or syscalls.
     // key.zig is internal, imported by path.
 
-    const widget_mod = b.createModule(.{
+    const widget_mod = b.addModule("fern_widget", .{
         .root_source_file = b.path("src/widget/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -418,6 +416,21 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
+    // table.zig: fern_ansi, fern_style; key.zig resolved
+    {
+        const unit_mod = b.createModule(.{
+            .root_source_file = b.path("src/widget/table.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        unit_mod.addImport("fern_ansi", ansi_mod);
+        unit_mod.addImport("fern_style", style_mod);
+        const unit = b.addTest(.{ .root_module = unit_mod, .use_llvm = use_llvm });
+        const run = b.addRunArtifact(unit);
+        test_step.dependOn(&run.step);
+        test_widget_step.dependOn(&run.step);
+    }
+
     // examples >>
 
     // spinner example >
@@ -561,4 +574,25 @@ pub fn build(b: *std.Build) void {
     const run_textinput = b.addRunArtifact(textinput_exe);
     const example_textinput_step = b.step("example-textinput", "Run examples/04_textinput");
     example_textinput_step.dependOn(&run_textinput.step);
+
+    // table example >
+    const table_exe = b.addExecutable(.{
+        .name = "table",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/05_table/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    table_exe.root_module.addImport("fern_ansi", ansi_mod);
+    table_exe.root_module.addImport("fern_style", style_mod);
+    table_exe.root_module.addImport("fern_app", app_mod);
+    table_exe.root_module.addImport("fern_widget", widget_mod);
+
+    if (needs_libc) table_exe.root_module.link_libc = true;
+    b.installArtifact(table_exe);
+
+    const run_table = b.addRunArtifact(table_exe);
+    const example_table_step = b.step("example-table", "Run examples/05_table");
+    example_table_step.dependOn(&run_table.step);
 }

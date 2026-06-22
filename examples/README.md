@@ -32,3 +32,12 @@ The `textinput` example demonstrates a simple fern application using a `textinpu
 <a href="../examples/04_textinput/main.zig">
   <img width="350" src="../docs/assets/textinput.gif" />
 </a>
+
+### Table
+
+The `table` example demonstrates the table bubble being used to display tabular
+data.
+
+<a href="../examples/05_table/main.zig">
+  <img width="350" src="../docs/assets/simple_table.gif" />
+</a>
