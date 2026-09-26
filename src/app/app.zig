@@ -457,49 +457,29 @@ fn processQueue(
     return false;
 }
 
-// Comptime event dispatcher. Maps ansi.Events to MsgT where names/types match.
-// Unmatched events return null and compile away to nothing.
-fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
-    const fields = @typeInfo(MsgT).@"union".fields;
-    switch (ev) {
-        .key => |k| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "key") and f.type == ansi.KeyEvent)
-                    return @unionInit(MsgT, "key", k);
-            }
-            return null;
-        },
-        .mouse => |m| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "mouse") and f.type == ansi.MouseEvent)
-                    return @unionInit(MsgT, "mouse", m);
-            }
-            return null;
-        },
-        .resize => |r| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "resize") and f.type == ansi.ResizeEvent)
-                    return @unionInit(MsgT, "resize", r);
-            }
-            return null;
-        },
-        .focus => |f_ev| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "focus") and f.type == ansi.FocusEvent)
-                    return @unionInit(MsgT, "focus", f_ev);
-            }
-            return null;
-        },
-        .paste => |p| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "paste") and f.type == ansi.PasteEvent)
-                    return @unionInit(MsgT, "paste", p);
-            }
-            return null;
-        },
-        // mode_report is handled by processQueue before reaching here.
-        else => return null,
+inline fn wrapField(
+    comptime MsgT: type,
+    comptime field_name: []const u8,
+    comptime ExpectedType: type,
+    val: ExpectedType,
+) ?MsgT {
+    if (comptime @hasField(MsgT, field_name)) {
+        if (comptime @FieldType(MsgT, field_name) == ExpectedType) {
+            return @unionInit(MsgT, field_name, val);
+        }
     }
+    return null;
+}
+
+fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
+    return switch (ev) {
+        .key => |k| wrapField(MsgT, "key", ansi.KeyEvent, k),
+        .mouse => |m| wrapField(MsgT, "mouse", ansi.MouseEvent, m),
+        .resize => |r| wrapField(MsgT, "resize", ansi.ResizeEvent, r),
+        .focus => |f| wrapField(MsgT, "focus", ansi.FocusEvent, f),
+        .paste => |p| wrapField(MsgT, "paste", ansi.PasteEvent, p),
+        else => null,
+    };
 }
 
 // Executes a Cmd from the update loop. Returns true on .quit.
