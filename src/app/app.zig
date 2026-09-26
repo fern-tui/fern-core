@@ -234,6 +234,7 @@ fn runImpl(
 
     // Synchronize renderer's alt_screen mode with opts!
     renderer.setAltScreen(opts.alt_screen);
+    renderer.setCursorHidden(opts.hide_cursor);
 
     defer {
         if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049l") catch {};
