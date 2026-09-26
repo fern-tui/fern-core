@@ -460,46 +460,40 @@ fn processQueue(
 // Comptime event dispatcher. Maps ansi.Events to MsgT where names/types match.
 // Unmatched events return null and compile away to nothing.
 fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
-    const fields = @typeInfo(MsgT).@"union".fields;
-    switch (ev) {
-        .key => |k| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "key") and f.type == ansi.KeyEvent)
-                    return @unionInit(MsgT, "key", k);
+    const u = @typeInfo(MsgT).@"union";
+    return switch (ev) {
+        .key => |k| wrapField(MsgT, u, "key", ansi.KeyEvent, k),
+        .mouse => |m| wrapField(MsgT, u, "mouse", ansi.MouseEvent, m),
+        .resize => |r| wrapField(MsgT, u, "resize", ansi.ResizeEvent, r),
+        .focus => |f| wrapField(MsgT, u, "focus", ansi.FocusEvent, f),
+        .paste => |p| wrapField(MsgT, u, "paste", ansi.PasteEvent, p),
+        else => null,
+    };
+}
+
+inline fn wrapField(
+    comptime MsgT: type,
+    comptime u: anytype,
+    comptime field_name: []const u8,
+    comptime ExpectedType: type,
+    val: ExpectedType,
+) ?MsgT {
+    if (comptime @hasField(@TypeOf(u), "fields")) {
+        // Zig 0.16 path
+        inline for (u.fields) |f| {
+            if (comptime std.mem.eql(u8, f.name, field_name) and f.type == ExpectedType) {
+                return @unionInit(MsgT, field_name, val);
             }
-            return null;
-        },
-        .mouse => |m| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "mouse") and f.type == ansi.MouseEvent)
-                    return @unionInit(MsgT, "mouse", m);
+        }
+    } else {
+        // Zig 0.17+ parallel arrays path
+        inline for (u.field_names, u.field_types) |name, T| {
+            if (comptime std.mem.eql(u8, name, field_name) and T == ExpectedType) {
+                return @unionInit(MsgT, field_name, val);
             }
-            return null;
-        },
-        .resize => |r| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "resize") and f.type == ansi.ResizeEvent)
-                    return @unionInit(MsgT, "resize", r);
-            }
-            return null;
-        },
-        .focus => |f_ev| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "focus") and f.type == ansi.FocusEvent)
-                    return @unionInit(MsgT, "focus", f_ev);
-            }
-            return null;
-        },
-        .paste => |p| {
-            inline for (fields) |f| {
-                if (comptime std.mem.eql(u8, f.name, "paste") and f.type == ansi.PasteEvent)
-                    return @unionInit(MsgT, "paste", p);
-            }
-            return null;
-        },
-        // mode_report is handled by processQueue before reaching here.
-        else => return null,
+        }
     }
+    return null;
 }
 
 // Executes a Cmd from the update loop. Returns true on .quit.
