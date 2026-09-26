@@ -33,12 +33,14 @@ zig build docs
 
 ## Requirements
 
-Zig 0.16.0. Not 0.14, not 0.13, not a nightly build.
+Zig 0.16.0. Not 0.14, not 0.13, not a nightly build. But if you want to use
+`0.17.0` you are free to try.
+
 Get it at https://ziglang.org/download.
 
 ## Running the Examples
 
-Clone the repository and run one of the three included examples:
+Clone the repository and run one of the included examples:
 
 ```sh
 git clone https://github.com/fern-tui/fern-core.git
@@ -47,6 +49,7 @@ cd fern-core
 zig build example-spinner    # a spinner ticking at 60fps, press q to quit
 zig build example-progress   # a spring-animated progress bar with RGB gradient
 zig build example-list       # a paginated list with keyboard navigation
+zig build example-table      # a table view of city population with Nav. keys
 ```
 
 Source for each example lives in `examples/`. Read it before asking questions.
@@ -79,17 +82,19 @@ const fern = b.dependency("fern", .{
     .optimize = optimize,
 });
 
-exe.root_module.addImport("fern_app",    fern.module("fern_app"));
-exe.root_module.addImport("fern_widget", fern.module("fern_widget"));
-exe.root_module.addImport("fern_style",  fern.module("fern_style"));
-exe.root_module.addImport("fern_ansi",   fern.module("fern_ansi"));
+// Import the complete toolkit:
+exe.root_module.addImport("fern", fern.module("fern"));
+
+// Or import only individual submodules if preferred:
+// exe.root_module.addImport("fern_app",  fern.module("fern_app"));
+// exe.root_module.addImport("fern_ansi", fern.module("fern_ansi"));
 ```
 
 Import only the modules your application uses.
 
 ## Architecture
 
-fern is not a monolith. It is six composable libraries that happen to fit
+fern is not a monolith. It is seven composable libraries that happen to fit
 together cleanly. Each can be used independently. Nothing reaches up the
 dependency graph. No circular imports.
 
@@ -102,10 +107,11 @@ The six modules and their dependency rules:
 
 | Module      | May import                                  |
 |-------------|---------------------------------------------|
-| fern_ansi   | nothing -- std only                         |
-| fern_anim   | nothing -- std.math only                    |
+| fern_ansi   | nothing                                     |
+| fern_anim   | nothing ( std.math only )                   |
 | fern_style  | fern_ansi                                   |
 | fern_zone   | fern_ansi                                   |
+| fern_canvas | fern_ansi                                   |
 | fern_app    | fern_ansi, fern_anim, fern_zone             |
 | fern_widget | fern_style, fern_anim, fern_zone, fern_app  |
 
