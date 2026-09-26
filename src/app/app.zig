@@ -457,43 +457,29 @@ fn processQueue(
     return false;
 }
 
-// Comptime event dispatcher. Maps ansi.Events to MsgT where names/types match.
-// Unmatched events return null and compile away to nothing.
-fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
-    const u = @typeInfo(MsgT).@"union";
-    return switch (ev) {
-        .key => |k| wrapField(MsgT, u, "key", ansi.KeyEvent, k),
-        .mouse => |m| wrapField(MsgT, u, "mouse", ansi.MouseEvent, m),
-        .resize => |r| wrapField(MsgT, u, "resize", ansi.ResizeEvent, r),
-        .focus => |f| wrapField(MsgT, u, "focus", ansi.FocusEvent, f),
-        .paste => |p| wrapField(MsgT, u, "paste", ansi.PasteEvent, p),
-        else => null,
-    };
-}
-
 inline fn wrapField(
     comptime MsgT: type,
-    comptime u: anytype,
     comptime field_name: []const u8,
     comptime ExpectedType: type,
     val: ExpectedType,
 ) ?MsgT {
-    if (comptime @hasField(@TypeOf(u), "fields")) {
-        // Zig 0.16 path
-        inline for (u.fields) |f| {
-            if (comptime std.mem.eql(u8, f.name, field_name) and f.type == ExpectedType) {
-                return @unionInit(MsgT, field_name, val);
-            }
-        }
-    } else {
-        // Zig 0.17+ parallel arrays path
-        inline for (u.field_names, u.field_types) |name, T| {
-            if (comptime std.mem.eql(u8, name, field_name) and T == ExpectedType) {
-                return @unionInit(MsgT, field_name, val);
-            }
+    if (comptime @hasField(MsgT, field_name)) {
+        if (comptime @FieldType(MsgT, field_name) == ExpectedType) {
+            return @unionInit(MsgT, field_name, val);
         }
     }
     return null;
+}
+
+fn tryWrapEvent(comptime MsgT: type, ev: ansi.Event) ?MsgT {
+    return switch (ev) {
+        .key => |k| wrapField(MsgT, "key", ansi.KeyEvent, k),
+        .mouse => |m| wrapField(MsgT, "mouse", ansi.MouseEvent, m),
+        .resize => |r| wrapField(MsgT, "resize", ansi.ResizeEvent, r),
+        .focus => |f| wrapField(MsgT, "focus", ansi.FocusEvent, f),
+        .paste => |p| wrapField(MsgT, "paste", ansi.PasteEvent, p),
+        else => null,
+    };
 }
 
 // Executes a Cmd from the update loop. Returns true on .quit.
