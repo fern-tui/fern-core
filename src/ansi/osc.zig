@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-// OSC sequence generators.
-// Terminates with ESC\ (never BEL).
-// Alloc-free, except setClipboard which requires an allocator for base64.
+//! Operating System Command (OSC) sequence generators.
+//!
+//! Generates formatting instructions targeting host terminal window systems
+//! (e.g., titles, clipboards, hyperlinks). All strings terminate safely with
+//! `ESC\` to bypass problematic handling of `BEL`.
 
 const std = @import("std");
 
 const OSC_OPEN = "\x1b]";
 const ST = "\x1b\\";
 
+/// Emits sequence to update terminal window title format.
 pub fn setTitle(w: anytype, title: []const u8) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("0;");
@@ -16,6 +19,7 @@ pub fn setTitle(w: anytype, title: []const u8) !void {
     try w.writeAll(ST);
 }
 
+/// Emits sequence to set the application icon text indicator.
 pub fn setIconName(w: anytype, name: []const u8) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("1;");
@@ -23,6 +27,7 @@ pub fn setIconName(w: anytype, name: []const u8) !void {
     try w.writeAll(ST);
 }
 
+/// Begins a hyperlink block spanning output content.
 pub fn hyperlinkStart(w: anytype, uri: []const u8, params: []const u8) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("8;");
@@ -32,6 +37,7 @@ pub fn hyperlinkStart(w: anytype, uri: []const u8, params: []const u8) !void {
     try w.writeAll(ST);
 }
 
+/// Terminates an active hyperlink span block.
 pub fn hyperlinkEnd(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("8;;");
@@ -78,6 +84,14 @@ fn writeBase64(w: anytype, data: []const u8) !void {
     }
 }
 
+/// Executes OSC 52 host clipboard write integration.
+///
+/// Converts raw data to base64 internally without allocating.
+///
+/// Parameters:
+///   - w: Output writer.
+///   - target: Clipboard target identifier (usually "c" or "p").
+///   - data: Plaintext payload to encode and copy.
 pub fn setClipboard(w: anytype, target: []const u8, data: []const u8) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("52;");
@@ -87,6 +101,7 @@ pub fn setClipboard(w: anytype, target: []const u8, data: []const u8) !void {
     try w.writeAll(ST);
 }
 
+/// Initiates host clipboard content request via OSC 52.
 pub fn requestClipboard(w: anytype, target: []const u8) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("52;");
@@ -119,49 +134,60 @@ fn writeOscColor(w: anytype, code: []const u8, r: u16, g: u16, b: u16) !void {
     try w.writeAll(ST);
 }
 
+/// Issues command overwriting primary window foreground color.
 pub fn setFgColor(w: anytype, r: u16, g: u16, b: u16) !void {
     try writeOscColor(w, "10", r, g, b);
 }
 
+/// Issues command overwriting primary window background color.
 pub fn setBgColor(w: anytype, r: u16, g: u16, b: u16) !void {
     try writeOscColor(w, "11", r, g, b);
 }
 
+/// Issues command overwriting terminal cursor color element.
 pub fn setCursorColor(w: anytype, r: u16, g: u16, b: u16) !void {
     try writeOscColor(w, "12", r, g, b);
 }
 
+/// Transmits foreground color query block.
 pub fn queryFgColor(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("10;?");
     try w.writeAll(ST);
 }
 
+/// Transmits background color query block.
 pub fn queryBgColor(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("11;?");
     try w.writeAll(ST);
 }
 
+/// Orders terminal to revert foreground properties back to profile defaults.
 pub fn resetFgColor(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("110;");
     try w.writeAll(ST);
 }
 
+/// Orders terminal to revert background properties back to profile defaults.
 pub fn resetBgColor(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("111;");
     try w.writeAll(ST);
 }
 
+/// Orders terminal to revert cursor color properties back to profile defaults.
 pub fn resetCursorColor(w: anytype) !void {
     try w.writeAll(OSC_OPEN);
     try w.writeAll("112;");
     try w.writeAll(ST);
 }
 
-// Fires off a desktop notification. Sends both the PS/WT and libnotify formats.
+/// Dispatches asynchronous local desktop notification blocks.
+///
+/// Simultaneously dispatches fallback payload structures to support both
+/// Windows Terminal/PowerShell native formatting alongside legacy libnotify configurations.
 pub fn notify(w: anytype, title: []const u8, body: []const u8) !void {
     // Windows Terminal / PowerShell format
     try w.writeAll(OSC_OPEN);

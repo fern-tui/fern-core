@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-// Border struct and comptime presets.
-// Pure data container: zero logic, zero allocations.
+//! Border glyph definitions and sizing utilities.
+//!
+//! Pure data container defining the structural components of a terminal UI box.
+//! Contains zero rendering logic and performs zero allocations.
+
 const std = @import("std");
 const ansi = @import("fern_ansi");
 
-// helpers
-
 // Returns the max cell width across all strings in parts.
-// Empty strings contribute 0.  Uses ansi.rawWidth (no ANSI strip needed
+// Empty strings contribute 0. Uses ansi.rawWidth (no ANSI strip needed
 // for border glyphs, which contain no SGR sequences).
 fn maxEdgeWidth(parts: []const []const u8) u16 {
     var max: u16 = 0;
@@ -19,8 +20,7 @@ fn maxEdgeWidth(parts: []const []const u8) u16 {
     return max;
 }
 
-// Border struct
-
+/// Defines the string fragments used to construct a bordered UI box.
 pub const Border = struct {
     top: []const u8 = "",
     bottom: []const u8 = "",
@@ -36,46 +36,42 @@ pub const Border = struct {
     mid_top: []const u8 = "",
     mid_bottom: []const u8 = "",
 
-    // Cell width of the top edge.
-    // Widest cell width among top_left, top, top_right; 0 if all empty.
+    /// Evaluates the cell width of the top edge.
+    /// Returns the widest cell width among top_left, top, top_right (0 if all empty).
     pub fn topSize(b: Border) u16 {
         return maxEdgeWidth(&.{ b.top_left, b.top, b.top_right });
     }
 
-    // Cell width of the bottom edge.
+    /// Evaluates the cell width of the bottom edge.
     pub fn bottomSize(b: Border) u16 {
         return maxEdgeWidth(&.{ b.bottom_left, b.bottom, b.bottom_right });
     }
 
-    // Cell width of the left edge.
-    // Widest among top_left, left, bottom_left.
+    /// Evaluates the cell width of the left edge.
     pub fn leftSize(b: Border) u16 {
         return maxEdgeWidth(&.{ b.top_left, b.left, b.bottom_left });
     }
 
-    // Cell width of the right edge.
+    /// Evaluates the cell width of the right edge.
     pub fn rightSize(b: Border) u16 {
         return maxEdgeWidth(&.{ b.top_right, b.right, b.bottom_right });
     }
 
-    // Total horizontal border size: left + right.
+    /// Evaluates the total horizontal footprint (left + right widths).
     pub fn horizontalSize(b: Border) u16 {
         return b.leftSize() + b.rightSize();
     }
 
-    // Total vertical border size: top + bottom (0 or 1 per active side).
+    /// Evaluates the total vertical footprint (top + bottom heights).
     pub fn verticalSize(b: Border) u16 {
         return b.topSize() + b.bottomSize();
     }
 };
 
-// preset constants
-// All are comptime-known; SCREAMING_SNAKE per convention.
+/// No border framing.
 pub const NONE: Border = .{};
 
-// <AI>
-
-// box-drawing light: standard single-line box characters
+/// Box-drawing light: standard single-line box characters.
 pub const NORMAL: Border = .{
     .top = "\xe2\x94\x80", // U+2500 light horizontal
     .bottom = "\xe2\x94\x80",
@@ -92,7 +88,7 @@ pub const NORMAL: Border = .{
     .mid_bottom = "\xe2\x94\xb4", // U+2534 light up and horizontal
 };
 
-// box-drawing light arc: rounded corners, same edges as NORMAL
+/// Box-drawing light arc: rounded corners, standard straight edges.
 pub const ROUNDED: Border = .{
     .top = "\xe2\x94\x80",
     .bottom = "\xe2\x94\x80",
@@ -109,7 +105,7 @@ pub const ROUNDED: Border = .{
     .mid_bottom = "\xe2\x94\xb4",
 };
 
-// box-drawing heavy: bold single-line box characters
+/// Box-drawing heavy: bold single-line box characters.
 pub const THICK: Border = .{
     .top = "\xe2\x94\x81", // U+2501 heavy horizontal
     .bottom = "\xe2\x94\x81",
@@ -126,7 +122,7 @@ pub const THICK: Border = .{
     .mid_bottom = "\xe2\x94\xbb", // U+253B heavy up and horizontal
 };
 
-// box-drawing double: double-line box characters
+/// Box-drawing double: double-line box characters.
 pub const DOUBLE: Border = .{
     .top = "\xe2\x95\x90", // U+2550 double horizontal
     .bottom = "\xe2\x95\x90",
@@ -143,7 +139,7 @@ pub const DOUBLE: Border = .{
     .mid_bottom = "\xe2\x95\xa9", // U+2569 double up and horizontal
 };
 
-// block fill: all sides use the full block character
+/// Block fill: all sides use the full block character.
 pub const BLOCK: Border = .{
     .top = "\xe2\x96\x88", // U+2588 full block
     .bottom = "\xe2\x96\x88",
@@ -160,7 +156,7 @@ pub const BLOCK: Border = .{
     .mid_bottom = "\xe2\x96\x88",
 };
 
-// half-block outer shell; mid_* fields are empty
+/// Half-block outer shell: utilizes partial blocks for outer depth. Mid fields are empty.
 pub const OUTER_HALF_BLOCK: Border = .{
     .top = "\xe2\x96\x80", // U+2580 upper half block
     .bottom = "\xe2\x96\x84", // U+2584 lower half block
@@ -172,7 +168,7 @@ pub const OUTER_HALF_BLOCK: Border = .{
     .bottom_right = "\xe2\x96\x9f", // U+259F quadrant upper-right/lower-left/right
 };
 
-// half-block inner inversion of OUTER_HALF_BLOCK; mid_* fields are empty
+/// Half-block inner shell: inversion of OUTER_HALF_BLOCK. Mid fields are empty.
 pub const INNER_HALF_BLOCK: Border = .{
     .top = "\xe2\x96\x84", // U+2584 lower half block (inverted top)
     .bottom = "\xe2\x96\x80", // U+2580 upper half block (inverted bottom)
@@ -184,7 +180,7 @@ pub const INNER_HALF_BLOCK: Border = .{
     .bottom_right = "\xe2\x96\x98", // U+2598 quadrant upper left
 };
 
-// hidden border: single space on every side for spacing without visible lines
+/// Hidden border: single space on every side for uniform padding without visible lines.
 pub const HIDDEN: Border = .{
     .top = " ",
     .bottom = " ",
@@ -201,7 +197,7 @@ pub const HIDDEN: Border = .{
     .mid_bottom = " ",
 };
 
-// ASCII fallback for terminals without box-drawing support
+/// ASCII fallback: exclusively uses standard ASCII characters (+, -, |).
 pub const ASCII: Border = .{
     .top = "-",
     .bottom = "-",
@@ -217,8 +213,6 @@ pub const ASCII: Border = .{
     .mid_top = "|",
     .mid_bottom = "|",
 };
-
-// </AI>
 
 test "Border NORMAL topSize returns 1" {
     try std.testing.expectEqual(@as(u16, 1), NORMAL.topSize());
@@ -252,7 +246,6 @@ test "Border BLOCK all edge sizes return 1" {
 }
 
 test "Border ROUNDED corner cells match NORMAL edge cells in width" {
-    // Rounded corners are arc variants with the same cell width as plain corners.
     try std.testing.expectEqual(NORMAL.leftSize(), ROUNDED.leftSize());
     try std.testing.expectEqual(NORMAL.rightSize(), ROUNDED.rightSize());
     try std.testing.expectEqual(NORMAL.topSize(), ROUNDED.topSize());

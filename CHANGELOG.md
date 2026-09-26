@@ -4,8 +4,40 @@ All notable changes to the `fern-core` project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.6-dev.14] - 2026-09-26
+
 ### Added
-- simple-table `Table` demo (`05_table`).
+- Unified `fern` umbrella root module (`src/root.zig`), enabling single drop-in
+  package imports (`@import("fern")`).
+- Dual-mode terminal rendering: native support for both full-screen alternate
+  buffer (`.alt_screen = true`) and inline CLI rendering.
+- Automated window resize event propagation (`ansi.ResizeEvent`) eliminating
+  per-frame `ioctl` syscalls.
+- `Table` widget demo (`05_table`).
+- Upstream compatibility support for Zig `0.17.0-dev`.
+
+### Changed
+- Refactored `build.zig` to eliminate redundant `.a` static library compilation
+  and streamlined test/example build matrices.
+- Optimized renderer diffing to retain a single backing frame buffer,
+  eliminating per-frame line allocation churn.
+- Updated `runSimple` to recycle a frame scratch arena (`reset(.retain_capacity)`)
+  to prevent memory leaks during long runs.
+- Adopted `std.heap.smp_allocator` as default application allocator for
+  Zig 0.16.0+ compatibility.
+- Streamlined comptime event dispatching in `app.zig` using direct `@hasField`
+  and `@FieldType` lookups.
+- Migrated canvas array initializations from removed `**` operator to `@splat`.
+- Modernized example suite (`00_minimal`, `01_spinner`, `02_progress`, `05_table`)
+  to consume the unified `fern` module.
+
+### Fixed
+- Fixed raw-mode newline staircasing by properly emitting CRLF (`\r\n`) in diff painter.
+- Fixed cursor visibility bug where `render.zig` was inadvertently restoring the
+  cursor when `.hide_cursor = true` was active.
+- Guaranteed terminal state restoration (cursor, mouse tracking, alt-screen, termios)
+  via `defer` to prevent bricked shells on errors.
+- Enforced libc-free builds for Linux targets while retaining Darwin libc requirements.
 
 ## [0.1.6-beta.11] - 2026-06-14
 
@@ -29,7 +61,8 @@ All notable changes to the `fern-core` project will be documented in this file.
 - Code of Conduct and updated `CODEOWNERS` referencing the maintainers team.
 
 ### Changed
-- Condensed and cleaned up code comments/docstrings across `app`, `style`, `widget`, `anim`, `zone`, and `ansi`.
+- Condensed and cleaned up code comments/docstrings across `app`, `style`, `widget`, `anim`,
+  `zone`, and `ansi`.
 - Revised `CONTRIBUTING.md` for structure and improved setup instructions.
 - Clarified AI usage and project features in `README.md`.
 - Consolidated example documentations into `examples.md` showcasing asset GIFs.
@@ -46,4 +79,5 @@ All notable changes to the `fern-core` project will be documented in this file.
 - Initial project architecture and repository initialization.
 
 
-*(Note: History prior to v0.1.5 was maintained in a local, offline VCS with no active development or public releases.)*
+*(Note: History prior to v0.1.5 was maintained in a local, offline VCS with no active development 
+        or public releases.)*

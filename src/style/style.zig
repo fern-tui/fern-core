@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-// Styles are cheap value types—every setter just returns a mutated copy.
-// For rendering, we shove all the messy intermediate allocations into a
-// temporary Arena and nuke it at the end. The caller only takes ownership
-// of the final []u8 string.
+//! Declarative terminal styling and rendering pipeline.
+//!
+//! Styles are cheap value types. Every modifier returns a newly mutated copy.
+//! The `render` step utilizes a temporary Arena allocator to bypass intermediate
+//! fragmentation, ensuring the caller safely receives the final string output.
+
 const std = @import("std");
 const ansi = @import("fern_ansi");
 const border = @import("border.zig");
@@ -21,16 +23,15 @@ const TOP = layout.TOP;
 const BOTTOM = layout.BOTTOM;
 const CENTER = layout.CENTER;
 
+/// The default number of spaces used to expand a single tab character.
 pub const TAB_WIDTH_DEFAULT: i16 = 4;
 
-// Underline style mirrors ansi.Attrs.Underline so callers need only import
-// this module.
+/// Underline style enumeration. Mirrors `ansi.Attrs.Underline`.
 pub const Underline = ansi.Attrs.Underline;
 
 // Props bitmask (private)
 // Tracks which Style fields were explicitly set.
 // inherit() uses this to distinguish "not set" from "explicitly zero".
-
 const Props = packed struct(u64) {
     bold: bool = false,
     italic: bool = false,
@@ -82,6 +83,7 @@ comptime {
     std.debug.assert(@bitSizeOf(Props) == 64);
 }
 
+/// Pipeline block for defining and rendering declarative styles.
 pub const Style = struct {
 
     // bitmask (private)
@@ -148,13 +150,12 @@ pub const Style = struct {
     // tab_width: -1 = leave tabs, 0 = strip, >0 = expand to N spaces
     tab_width: i16 = TAB_WIDTH_DEFAULT,
 
-    // lifecycle
+    /// Initializes a default, unstyled configuration.
     pub fn init() Style {
         return .{};
     }
 
-    // setters (value-receiver; each returns a new Style)
-
+    /// Enables or disables bold text formatting.
     pub fn bold_(self: Style, on: bool) Style {
         var s = self;
         s.bold = on;
@@ -162,6 +163,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables italic text formatting.
     pub fn italic_(self: Style, on: bool) Style {
         var s = self;
         s.italic = on;
@@ -169,6 +171,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables dim/faint text formatting.
     pub fn faint_(self: Style, on: bool) Style {
         var s = self;
         s.faint = on;
@@ -176,6 +179,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables foreground/background color inversion.
     pub fn reverse_(self: Style, on: bool) Style {
         var s = self;
         s.reverse = on;
@@ -183,6 +187,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables text blinking.
     pub fn blink_(self: Style, on: bool) Style {
         var s = self;
         s.blink = on;
@@ -190,6 +195,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables text strikethrough.
     pub fn strike_(self: Style, on: bool) Style {
         var s = self;
         s.strike = on;
@@ -197,7 +203,7 @@ pub const Style = struct {
         return s;
     }
 
-    // .none disables underline entirely.
+    /// Configures the underline stroke style. Use `.none` to disable.
     pub fn underline_(self: Style, style: Underline) Style {
         var s = self;
         s.underline_style = style;
@@ -205,6 +211,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Specifies whether the underline styling extends across trailing whitespace.
     pub fn underlineSpaces(self: Style, on: bool) Style {
         var s = self;
         s.underline_spaces = on;
@@ -212,6 +219,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Specifies whether the strikethrough styling extends across trailing whitespace.
     pub fn strikeSpaces(self: Style, on: bool) Style {
         var s = self;
         s.strike_spaces = on;
@@ -219,6 +227,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures whether padding and margin elements inherit the background color.
     pub fn colorWhitespace(self: Style, on: bool) Style {
         var s = self;
         s.color_ws = on;
@@ -226,6 +235,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the foreground text color.
     pub fn fg_(self: Style, c: ansi.Color) Style {
         var s = self;
         s.fg = c;
@@ -233,6 +243,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the background block color.
     pub fn bg_(self: Style, c: ansi.Color) Style {
         var s = self;
         s.bg = c;
@@ -240,6 +251,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the color of the underline stroke natively.
     pub fn ulColor(self: Style, c: ansi.Color) Style {
         var s = self;
         s.ul_color = c;
@@ -247,6 +259,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enforces a rigid internal width. Passing `0` bypasses evaluation.
     pub fn width_(self: Style, w: u16) Style {
         var s = self;
         s.width = w;
@@ -254,6 +267,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enforces a rigid internal height. Passing `0` bypasses evaluation.
     pub fn height_(self: Style, h: u16) Style {
         var s = self;
         s.height = h;
@@ -261,6 +275,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the maximum allowable width for the output block. Overflows are truncated.
     pub fn maxWidth(self: Style, w: u16) Style {
         var s = self;
         s.max_width = w;
@@ -268,6 +283,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the maximum allowable height for the output block. Excess lines are dropped.
     pub fn maxHeight(self: Style, h: u16) Style {
         var s = self;
         s.max_height = h;
@@ -275,6 +291,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the horizontal alignment scalar for the content within its bounds.
     pub fn alignH(self: Style, p: Pos) Style {
         var s = self;
         s.align_h = p;
@@ -282,6 +299,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the vertical alignment scalar for the content within its bounds.
     pub fn alignV(self: Style, p: Pos) Style {
         var s = self;
         s.align_v = p;
@@ -289,6 +307,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures internal padding on all four sides simultaneously.
     pub fn padding_(self: Style, top: u16, right: u16, bottom: u16, left: u16) Style {
         var s = self;
         s.pad_top = top;
@@ -302,6 +321,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures internal top padding.
     pub fn padTop(self: Style, n: u16) Style {
         var s = self;
         s.pad_top = n;
@@ -309,6 +329,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures internal right padding.
     pub fn padRight(self: Style, n: u16) Style {
         var s = self;
         s.pad_right = n;
@@ -316,6 +337,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures internal bottom padding.
     pub fn padBottom(self: Style, n: u16) Style {
         var s = self;
         s.pad_bottom = n;
@@ -323,6 +345,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures internal left padding.
     pub fn padLeft(self: Style, n: u16) Style {
         var s = self;
         s.pad_left = n;
@@ -330,6 +353,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures external margins on all four sides simultaneously.
     pub fn margin_(self: Style, top: u16, right: u16, bottom: u16, left: u16) Style {
         var s = self;
         s.margin_top = top;
@@ -343,6 +367,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures external top margin.
     pub fn marginTop(self: Style, n: u16) Style {
         var s = self;
         s.margin_top = n;
@@ -350,6 +375,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures external right margin.
     pub fn marginRight(self: Style, n: u16) Style {
         var s = self;
         s.margin_right = n;
@@ -357,6 +383,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures external bottom margin.
     pub fn marginBottom(self: Style, n: u16) Style {
         var s = self;
         s.margin_bottom = n;
@@ -364,6 +391,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Configures external left margin.
     pub fn marginLeft(self: Style, n: u16) Style {
         var s = self;
         s.margin_left = n;
@@ -371,6 +399,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Assigns a background color exclusively to the external margin area.
     pub fn marginBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.margin_bg = c;
@@ -378,7 +407,7 @@ pub const Style = struct {
         return s;
     }
 
-    // Sets the border style without enabling any side.
+    /// Sets the border glyph style without enabling any specific edge.
     pub fn border_(self: Style, b: Border) Style {
         var s = self;
         s.border_style = b;
@@ -386,7 +415,7 @@ pub const Style = struct {
         return s;
     }
 
-    // Sets the border style and enables all four sides.
+    /// Sets the border glyph style and enables drawing for all four sides.
     pub fn borderAll(self: Style, b: Border) Style {
         var s = self;
         s.border_style = b;
@@ -402,6 +431,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables the top border edge.
     pub fn borderTop_(self: Style, on: bool) Style {
         var s = self;
         s.border_top = on;
@@ -409,6 +439,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables the right border edge.
     pub fn borderRight_(self: Style, on: bool) Style {
         var s = self;
         s.border_right = on;
@@ -416,6 +447,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables the bottom border edge.
     pub fn borderBottom_(self: Style, on: bool) Style {
         var s = self;
         s.border_bottom = on;
@@ -423,6 +455,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables the left border edge.
     pub fn borderLeft_(self: Style, on: bool) Style {
         var s = self;
         s.border_left = on;
@@ -430,7 +463,7 @@ pub const Style = struct {
         return s;
     }
 
-    // Sets fg color for all four border sides simultaneously.
+    /// Sets the foreground color for all four border sides simultaneously.
     pub fn borderFg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_top_fg = c;
@@ -444,6 +477,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the foreground color for the top border edge.
     pub fn borderTopFg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_top_fg = c;
@@ -451,6 +485,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the foreground color for the right border edge.
     pub fn borderRightFg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_right_fg = c;
@@ -458,6 +493,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the foreground color for the bottom border edge.
     pub fn borderBottomFg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_bottom_fg = c;
@@ -465,6 +501,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the foreground color for the left border edge.
     pub fn borderLeftFg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_left_fg = c;
@@ -472,7 +509,7 @@ pub const Style = struct {
         return s;
     }
 
-    // Sets bg color for all four border sides simultaneously.
+    /// Sets the background color for all four border sides simultaneously.
     pub fn borderBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_top_bg = c;
@@ -486,6 +523,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the background color for the top border edge.
     pub fn borderTopBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_top_bg = c;
@@ -493,6 +531,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the background color for the right border edge.
     pub fn borderRightBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_right_bg = c;
@@ -500,6 +539,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the background color for the bottom border edge.
     pub fn borderBottomBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_bottom_bg = c;
@@ -507,6 +547,7 @@ pub const Style = struct {
         return s;
     }
 
+    /// Sets the background color for the left border edge.
     pub fn borderLeftBg(self: Style, c: ansi.Color) Style {
         var s = self;
         s.border_left_bg = c;
@@ -514,6 +555,8 @@ pub const Style = struct {
         return s;
     }
 
+    /// Enables or disables inline mode. When active, newlines are strictly stripped
+    /// from the output and padding/margin/borders are bypassed.
     pub fn inlineMode(self: Style, on: bool) Style {
         var s = self;
         s.inline_mode = on;
@@ -521,6 +564,8 @@ pub const Style = struct {
         return s;
     }
 
+    /// Defines tab rendering behavior: `-1` leaves tabs intact, `0` strips them entirely,
+    /// `> 0` expands them to the specified interval of spaces.
     pub fn tabWidth_(self: Style, w: i16) Style {
         var s = self;
         s.tab_width = w;
@@ -528,9 +573,15 @@ pub const Style = struct {
         return s;
     }
 
-    // Cascades parent styles (acts as a fallback for any unset properties).
-    // Margins/padding do not inherit (lipgloss semantics).
-    // Unset margin_bg defaults to the parent's base bg.
+    /// Cascades property states from a parent style block into the current configuration.
+    /// Excludes layout elements (margins and padding) per standard UI semantics.
+    /// Unset margin backgrounds default directly to the parent base background.
+    ///
+    /// Parameters:
+    ///   - parent: The fallback `Style` struct.
+    ///
+    /// Returns:
+    ///   A new `Style` representing the inherited cascade.
     pub fn inherit(self: Style, parent: Style) Style {
         var s = self;
 
@@ -672,7 +723,7 @@ pub const Style = struct {
         }
 
         // Propagate parent bg into child margin_bg when neither bg nor margin_bg
-        // is set on child.  Consistent with lipgloss whitespace-colour inheritance.
+        // is set on child. Consistent with lipgloss whitespace-colour inheritance.
         if (!self._props.margin_bg and parent._props.bg and !self._props.bg) {
             s.margin_bg = parent.bg;
             s._props.margin_bg = true;
@@ -681,9 +732,7 @@ pub const Style = struct {
         return s;
     }
 
-    // border size getters (pub: widget/ needs them)
-
-    // Total width consumed by borders (left + right, in cells).
+    /// Evaluates the total horizontal footprint consumed by the active left and right borders.
     pub fn borderHSize(self: Style) u16 {
         var w: u16 = 0;
         if (self.border_left) w += self.border_style.leftSize();
@@ -691,7 +740,7 @@ pub const Style = struct {
         return w;
     }
 
-    // Total height consumed by borders (top + bottom, either 0 or 2).
+    /// Evaluates the total vertical footprint consumed by the active top and bottom borders.
     pub fn borderVSize(self: Style) u16 {
         var h: u16 = 0;
         if (self.border_top) h += self.border_style.topSize();
@@ -699,9 +748,18 @@ pub const Style = struct {
         return h;
     }
 
-    // render
-    // Caller owns the returned slice.  Free with allocator.free().
-    // Returns error.OutOfMemory if any intermediate allocation fails.
+    /// Evaluates all configured style attributes and renders the final string block.
+    ///
+    /// Memory handles are strictly managed internally through an Arena. The final
+    /// returned string is duplicated into the passed allocator, making the caller
+    /// fully responsible for freeing the result.
+    ///
+    /// Parameters:
+    ///   - allocator: The output allocator.
+    ///   - text: The baseline unstyled content string.
+    ///
+    /// Returns:
+    ///   An allocated slice containing the styled output buffer.
     pub fn render(
         self: Style,
         allocator: std.mem.Allocator,
@@ -1214,7 +1272,7 @@ fn applyBorder(
 ) error{ OutOfMemory, WriteFailed }![]const u8 {
     // Decide which sides are active.
     // If border_style is set but none of the per-side flags are explicitly set,
-    // enable all four sides.  Otherwise use the explicit flags.
+    // enable all four sides. Otherwise use the explicit flags.
     const explicit_sides = self._props.border_top or self._props.border_right or
         self._props.border_bottom or self._props.border_left;
 

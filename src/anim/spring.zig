@@ -1,33 +1,47 @@
 // SPDX-License-Identifier: MIT
 
-// Damped harmonic oscillator: port of Ryan Juckett's "Simple Damped Harmonic
-// Motion" (2008-2012).  Algorithm documented at:
-//   https://www.ryanjuckett.com/damped-springs/
-// Do not substitute a different algorithm.
+//! Damped harmonic oscillator implementation.
+//!
+//! Port of Ryan Juckett's "Simple Damped Harmonic Motion" (2008-2012).
+//! Algorithm documented at: https://www.ryanjuckett.com/damped-springs/
+//! Do not substitute a different algorithm.
 
 const std = @import("std");
 
-// used to pick the damping regime
+// Used to pick the damping regime.
 const EPSILON: f64 = std.math.floatEps(f64);
 
+/// Contains the evaluated state of a spring after an update step.
 pub const UpdateResult = struct {
+    /// The computed position.
     pos: f64,
+    /// The computed velocity.
     vel: f64,
 };
 
+/// 2x2 transition matrix for evaluating a damped harmonic oscillator over time.
 pub const Spring = struct {
     pos_pos_coef: f64,
     pos_vel_coef: f64,
     vel_pos_coef: f64,
     vel_vel_coef: f64,
 
-    // Precompute the 2x2 transition matrix.
-    // ang_freq and damping are clamped to [0, inf).
+    /// Precomputes the transition matrix for a specific time step and spring parameters.
+    ///
+    /// `ang_freq` and `damping` are clamped to `[0.0, inf)`.
+    ///
+    /// Parameters:
+    ///   - delta_time: The time duration of each update step in seconds.
+    ///   - ang_freq: The angular frequency of the oscillator.
+    ///   - damping: The damping ratio (1.0 is critically damped).
+    ///
+    /// Returns:
+    ///   A `Spring` instance containing the precomputed coefficients.
     pub fn init(delta_time: f64, ang_freq: f64, damping: f64) Spring {
         const w = @max(0.0, ang_freq);
         const zeta = @max(0.0, damping);
 
-        // zero frequency, nothing moves
+        // Zero frequency: nothing moves.
         if (w < EPSILON) {
             return .{
                 .pos_pos_coef = 1.0,
@@ -37,7 +51,7 @@ pub const Spring = struct {
             };
         }
 
-        // over-damped: two real roots
+        // Over-damped: two real roots.
         if (zeta > 1.0 + EPSILON) {
             const za = -w * zeta;
             const zb = w * std.math.sqrt(zeta * zeta - 1.0);
@@ -45,6 +59,7 @@ pub const Spring = struct {
             const z2 = za + zb;
             const e1 = std.math.exp(z1 * delta_time);
             const e2 = std.math.exp(z2 * delta_time);
+
             // inv_two_zb = 1 / (z2 - z1)
             const inv_two_zb = 1.0 / (2.0 * zb);
 
@@ -61,7 +76,7 @@ pub const Spring = struct {
             };
         }
 
-        // under-damped: complex roots, oscillates
+        // Under-damped: complex roots, oscillates.
         if (zeta < 1.0 - EPSILON) {
             const omega_zeta = w * zeta;
             const alpha = w * std.math.sqrt(1.0 - zeta * zeta);
@@ -84,7 +99,7 @@ pub const Spring = struct {
             };
         }
 
-        // critically damped: no overshoot, fastest convergence
+        // Critically damped: no overshoot, fastest convergence.
         const exp_term = std.math.exp(-w * delta_time);
         const time_exp = delta_time * exp_term;
         const time_exp_freq = time_exp * w;
@@ -97,7 +112,17 @@ pub const Spring = struct {
         };
     }
 
-    // Spring is by value so the same Spring can drive multiple objects.
+    /// Advances the spring simulation by one step.
+    ///
+    /// `Spring` is passed by value, so the same instance can drive multiple objects.
+    ///
+    /// Parameters:
+    ///   - pos: The current position.
+    ///   - vel: The current velocity.
+    ///   - target: The desired resting position.
+    ///
+    /// Returns:
+    ///   An `UpdateResult` containing the new position and velocity.
     pub fn update(self: Spring, pos: f64, vel: f64, target: f64) UpdateResult {
         const p = pos - target;
         return .{
@@ -106,14 +131,31 @@ pub const Spring = struct {
         };
     }
 
-    // Typical UI threshold is around 0.001.
+    /// Checks whether the spring has settled at its target.
+    ///
+    /// Parameters:
+    ///   - pos: The current position.
+    ///   - vel: The current velocity.
+    ///   - target: The resting position.
+    ///   - threshold: The acceptable delta for both position and velocity.
+    ///                A typical UI threshold is around 0.001.
+    ///
+    /// Returns:
+    ///   `true` if the spring's position and velocity are within `threshold`
+    ///   of the target and zero, respectively.
     pub fn settled(self: Spring, pos: f64, vel: f64, target: f64, threshold: f64) bool {
         _ = self;
         return @abs(pos - target) < threshold and @abs(vel) < threshold;
     }
 };
 
-// Don't pass 0; that produces inf.
+/// Converts a given frame rate (Hz) to delta-time (seconds).
+///
+/// Parameters:
+///   - n: Frames per second. Do not pass `0`, as it produces infinity.
+///
+/// Returns:
+///   The duration of a single frame in seconds.
 pub inline fn fps(n: u32) f64 {
     return 1.0 / @as(f64, @floatFromInt(n));
 }

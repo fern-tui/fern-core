@@ -1,253 +1,257 @@
 // SPDX-License-Identifier: MIT
 
-// Public surface of fern/ansi
+//! Public API surface for fern/ansi.
+//!
+//! Exposes parsing, encoding, color degradation, string manipulation, and
+//! rendering sequences for terminal UI handling.
 
-/// color value - .none, .ansi16, .ansi256, or .rgb
+/// Base color variants: `.none`, `.ansi16`, `.ansi256`, or `.rgb`.
 pub const Color = @import("color.zig").Color;
 
-/// the 16 named ANSI colors
+/// The 16 baseline ANSI color identifiers.
 pub const Ansi16 = @import("color.zig").Ansi16;
 
-/// 24-bit RGB color
+/// 24-bit RGB true color representation.
 pub const Rgb = @import("color.zig").Rgb;
 
-/// terminal color capability: no_color, ansi16, ansi256, true_color
+/// Terminal capability identifiers: `no_color`, `ansi16`, `ansi256`, `true_color`.
 pub const ColorProfile = @import("color.zig").ColorProfile;
 
-/// SGR attributes for a cell or span (bold, italic, colors, etc.)
+/// SGR attributes applied to a single display cell (e.g., bold, italics, colors).
 pub const Attrs = @import("csi.zig").Attrs;
 
-/// cursor shape: default, block, bar, underline, each with optional blink
+/// Geometric styling definition of the active cursor state.
 pub const CursorShape = @import("csi.zig").CursorShape;
 
-/// DEC private mode number (DECSET/DECRST target)
+/// Standard DEC Private modes identifier block.
 pub const Mode = @import("csi.zig").Mode;
 
-/// which mouse events the terminal should report
+/// Operational tracking depth constraints on mouse interactions.
 pub const MouseTrackingMode = @import("csi.zig").MouseTrackingMode;
 
-/// what to erase: below, above, all, or scrollback
+/// Target direction for Erase in Display (ED) sequences.
 pub const EraseDisplay = @import("csi.zig").EraseDisplay;
 
-/// what to erase on the current line: to_end, to_start, or all
+/// Target direction for Erase in Line (EL) sequences.
 pub const EraseLine = @import("csi.zig").EraseLine;
 
-/// any terminal event: key, mouse, resize, focus, paste, or a query response
+/// Base event representation capturing keypresses, mouse actions, and terminal reports.
 pub const Event = @import("parse.zig").Event;
 
-/// a key press (or release/repeat) with modifiers
+/// State definition encapsulating physical keyboard stroke conditions.
 pub const KeyEvent = @import("parse.zig").KeyEvent;
 
-/// which key was pressed - char, function key, arrow, keypad, etc.
+/// Physical hardware key mapping definitions.
 pub const KeyCode = @import("parse.zig").KeyCode;
 
-/// modifier flags: shift, ctrl, alt, super, hyper, meta
+/// Binary modifier flags evaluating `shift`, `ctrl`, `alt`, `super`, `hyper`, `meta`.
 pub const KeyMods = @import("parse.zig").KeyMods;
 
-/// mouse button press, release, or motion with position and modifiers
+/// State definition encapsulating physical mouse actions and positioning parameters.
 pub const MouseEvent = @import("parse.zig").MouseEvent;
 
-/// terminal resize: new cols and rows
+/// Dimensions reported following a window or interface area resize.
 pub const ResizeEvent = @import("parse.zig").ResizeEvent;
 
-/// focus gained or lost
+/// Window interface focus transitions.
 pub const FocusEvent = @import("parse.zig").FocusEvent;
 
-/// text from a bracketed paste. caller owns the slice.
+/// Content retrieved from a bracketed paste invocation block.
+/// The text slice is owned by the caller.
 pub const PasteEvent = @import("parse.zig").PasteEvent;
 
-/// row/col from a CPR response
+/// Two-dimensional coordinate vector matching a valid terminal row/col point.
 pub const CursorPos = @import("parse.zig").CursorPos;
 
-/// terminal color query response - slot number, r/g/b as 16-bit components
+/// Values extracted via an OSC window system properties inquiry.
 pub const ColorReport = @import("parse.zig").ColorReport;
 
-/// DA1/DA2 response - up to 8 params
+/// Output array from a Device Attributes check.
 pub const DaResponse = @import("parse.zig").DaResponse;
 
-/// DECRPM response: which mode and its current value
+/// Results evaluated during DECRPM checks determining sequence capability sets.
 pub const ModeReport = @import("parse.zig").ModeReport;
 
-/// streaming input parser - feed bytes in, get Events out
+/// Stateful sequence parser for resolving raw serial byte-streams to discrete `Event` models.
 pub const Parser = @import("parse.zig").Parser;
 
-/// display width of a single unicode codepoint (0, 1, or 2 cells)
+/// Resolves total visible dimension space needed to display a single unicode codepoint.
 pub const cpWidth = @import("width.zig").cpWidth;
 
-/// display width of a utf-8 string in terminal cells
+/// Resolves total visible dimension space needed to display a full UTF-8 encoded string.
 pub const strWidth = @import("width.zig").strWidth;
 
-/// byte length - no unicode, no ANSI awareness
+/// Checks unmodified byte-length constraints without evaluating layout widths.
 pub const rawWidth = @import("width.zig").rawWidth;
 
-/// string utilities: width, stripping, padding, wrapping
+/// Provides tools for text wrapping, layout rendering, length bounds checks, and truncation.
 pub const str = struct {
-    /// display width in terminal cells
+    /// Evaluates display width in terminal cells.
     pub const strWidth = @import("str.zig").strWidth;
-    /// byte length
+    /// Evaluates raw byte length.
     pub const rawWidth = @import("str.zig").rawWidth;
-    /// strip ANSI escape sequences, returns owned slice
+    /// Strips ANSI escape sequences. Returns an allocated slice that caller must free.
     pub const stripAnsi = @import("str.zig").stripAnsi;
-    /// truncate to max display width, returns owned slice
+    /// Truncates to maximum display width. Returns an allocated slice that caller must free.
     pub const truncate = @import("str.zig").truncate;
-    /// right-pad to width with spaces, returns owned slice
+    /// Right-pads to the specified width with spaces. Returns an allocated slice that caller must free.
     pub const pad = @import("str.zig").pad;
-    /// left-pad to width with spaces, returns owned slice
+    /// Left-pads to the specified width with spaces. Returns an allocated slice that caller must free.
     pub const padLeft = @import("str.zig").padLeft;
-    /// iterate over newline-separated lines
+    /// Iterates over newline-separated lines. Returns an allocated slice of strings.
     pub const splitLines = @import("str.zig").splitLines;
-    /// number of newline-separated lines
+    /// Counts the number of newline-separated lines.
     pub const lineCount = @import("str.zig").lineCount;
-    /// display width of the widest line
+    /// Returns the display width of the widest line in a multi-line string.
     pub const maxLineWidth = @import("str.zig").maxLineWidth;
-    /// word-wrap to a column width, returns owned slice
+    /// Word-wraps text to a specific column width. Returns an allocated slice that caller must free.
     pub const wrap = @import("str.zig").wrap;
-    /// expand tab characters to spaces, returns owned slice
+    /// Expands tab characters to spaces. Returns an allocated slice that caller must free.
     pub const expandTabs = @import("str.zig").expandTabs;
 };
 
-/// SGR text styling sequences
+/// Emits Control Sequence Introducer styles matching target rendering attributes.
 pub const sgr = struct {
-    /// ESC[m - reset all attributes
+    /// ESC[m - resets all active attributes.
     pub const reset = @import("csi.zig").sgrReset;
-    /// bold
+    /// Configures bold typography definitions.
     pub const bold = @import("csi.zig").sgrBold;
-    /// italic
+    /// Configures italic typography definitions.
     pub const italic = @import("csi.zig").sgrItalic;
-    /// dim/faint
+    /// Configures dim or faint typography definitions.
     pub const faint = @import("csi.zig").sgrFaint;
-    /// underline (style set via Attrs.Underline)
+    /// Configures underline styling variables.
     pub const underline = @import("csi.zig").sgrUnderline;
-    /// blink
+    /// Establishes slow and rapid visual blink timing sets.
     pub const blink = @import("csi.zig").sgrBlink;
-    /// swap fg and bg
+    /// Swaps the foreground and background colors.
     pub const reverse = @import("csi.zig").sgrReverse;
-    /// invisible text (still occupies cells)
+    /// Triggers invisible output text formatting (text still occupies cells).
     pub const conceal = @import("csi.zig").sgrConceal;
-    /// strikethrough
+    /// Enables strikethrough configuration variables.
     pub const strike = @import("csi.zig").sgrStrike;
-    /// set foreground color
+    /// Sets foreground color.
     pub const fg = @import("csi.zig").sgrFg;
-    /// set background color
+    /// Sets background color.
     pub const bg = @import("csi.zig").sgrBg;
-    /// set underline color
+    /// Sets the underline stroke color.
     pub const ul_color = @import("csi.zig").sgrUlColor;
-    /// emit only the SGR params that changed from prev to next
+    /// Emits only the SGR parameters that changed from `prev` to `next`.
     pub const diff = @import("csi.zig").sgrDiff;
 };
 
-/// cursor movement and visibility sequences
+/// Cursor movement and visibility sequences.
 pub const cursor = struct {
-    /// move up n rows
+    /// Moves the cursor up `n` rows.
     pub const up = @import("csi.zig").cursorUp;
-    /// move down n rows
+    /// Moves the cursor down `n` rows.
     pub const down = @import("csi.zig").cursorDown;
-    /// move right n columns
+    /// Moves the cursor right `n` columns.
     pub const forward = @import("csi.zig").cursorForward;
-    /// move left n columns
+    /// Moves the cursor left `n` columns.
     pub const back = @import("csi.zig").cursorBack;
-    /// move to start of line, n rows down
+    /// Moves to the start of the line, `n` rows down.
     pub const next_line = @import("csi.zig").cursorNextLine;
-    /// move to start of line, n rows up
+    /// Moves to the start of the line, `n` rows up.
     pub const prev_line = @import("csi.zig").cursorPrevLine;
-    /// absolute column on the current row
+    /// Sets the absolute column on the current row.
     pub const col = @import("csi.zig").cursorCol;
-    /// absolute row and column
+    /// Sets the absolute row and column.
     pub const pos = @import("csi.zig").cursorPos;
-    /// move to 1,1
+    /// Moves to origin (1,1).
     pub const home = @import("csi.zig").cursorHome;
-    /// DECSC - save cursor position
+    /// DECSC - saves the current cursor position.
     pub const save = @import("csi.zig").cursorSave;
-    /// DECRC - restore saved position
+    /// DECRC - restores the saved cursor position.
     pub const restore = @import("csi.zig").cursorRestore;
-    /// DECSCUSR - set cursor shape
+    /// DECSCUSR - sets the active cursor shape.
     pub const shape = @import("csi.zig").cursorShape;
-    /// CPR - request current cursor position
+    /// CPR - requests the current cursor position from the terminal.
     pub const request = @import("csi.zig").cursorRequest;
-    /// DECTCEM on - show cursor
+    /// DECTCEM on - makes the cursor visible.
     pub const show = @import("csi.zig").showCursor;
-    /// DECTCEM off - hide cursor
+    /// DECTCEM off - hides the cursor.
     pub const hide = @import("csi.zig").hideCursor;
 };
 
-/// screen and terminal state sequences
+/// Screen clear operations and terminal state sequences.
 pub const screen = struct {
-    /// ED - erase part or all of the display
+    /// ED - erases part or all of the display buffer.
     pub const erase_display = @import("csi.zig").eraseDisplay;
-    /// EL - erase part or all of the current line
+    /// EL - erases part or all of the current line.
     pub const erase_line = @import("csi.zig").eraseLine;
-    /// scroll up n lines
+    /// Scrolls the viewport up `n` lines.
     pub const scroll_up = @import("csi.zig").scrollUp;
-    /// scroll down n lines
+    /// Scrolls the viewport down `n` lines.
     pub const scroll_down = @import("csi.zig").scrollDown;
-    /// DECSET 1049 - enter alternate screen
+    /// DECSET 1049 - enters the alternate screen buffer.
     pub const alt_enter = @import("csi.zig").altScreenEnter;
-    /// DECRST 1049 - leave alternate screen
+    /// DECRST 1049 - leaves the alternate screen buffer.
     pub const alt_leave = @import("csi.zig").altScreenLeave;
-    /// synchronized output begin (mode 2026)
+    /// DECSET 2026 - begins synchronized output rendering.
     pub const sync_begin = @import("csi.zig").syncOutputBegin;
-    /// synchronized output end
+    /// DECRST 2026 - ends synchronized output rendering.
     pub const sync_end = @import("csi.zig").syncOutputEnd;
-    /// enable mouse tracking
+    /// Enables terminal mouse tracking.
     pub const mouse_enter = @import("csi.zig").mouseTrackingEnter;
-    /// disable mouse tracking
+    /// Disables terminal mouse tracking.
     pub const mouse_leave = @import("csi.zig").mouseTrackingLeave;
-    /// DECSET 2004 - enable bracketed paste
+    /// DECSET 2004 - enables bracketed paste mode.
     pub const paste_enter = @import("csi.zig").bracketedPasteEnter;
-    /// DECRST 2004 - disable bracketed paste
+    /// DECRST 2004 - disables bracketed paste mode.
     pub const paste_leave = @import("csi.zig").bracketedPasteLeave;
-    /// DECSET 1004 - enable focus reporting
+    /// DECSET 1004 - enables focus reporting.
     pub const focus_enter = @import("csi.zig").focusReportingEnter;
-    /// DECRST 1004 - disable focus reporting
+    /// DECRST 1004 - disables focus reporting.
     pub const focus_leave = @import("csi.zig").focusReportingLeave;
 };
 
-/// OSC sequences: window title, clipboard, hyperlinks, terminal colors
+/// Operating System Command (OSC) sequence generators.
 pub const osc = struct {
-    /// OSC 0 - set window title
+    /// OSC 0 - sets the host window title.
     pub const set_title = @import("osc.zig").setTitle;
-    /// OSC 1 - set icon name
+    /// OSC 1 - sets the host icon name.
     pub const set_icon_name = @import("osc.zig").setIconName;
-    /// OSC 8 - start a hyperlink
+    /// OSC 8 - starts a clickable hyperlink span.
     pub const hyperlink = @import("osc.zig").hyperlinkStart;
-    /// OSC 8;; - end a hyperlink
+    /// OSC 8;; - ends a clickable hyperlink span.
     pub const hyperlink_end = @import("osc.zig").hyperlinkEnd;
-    /// OSC 52 - write to clipboard (base64-encodes internally)
+    /// OSC 52 - pushes data to the host clipboard (handles base64 encoding internally).
     pub const clipboard_set = @import("osc.zig").setClipboard;
-    /// OSC 52;target;? - request clipboard content
+    /// OSC 52;target;? - requests the host clipboard content.
     pub const clipboard_req = @import("osc.zig").requestClipboard;
-    /// OSC 10 - set terminal foreground color
+    /// OSC 10 - sets the global terminal foreground color.
     pub const set_fg = @import("osc.zig").setFgColor;
-    /// OSC 11 - set terminal background color
+    /// OSC 11 - sets the global terminal background color.
     pub const set_bg = @import("osc.zig").setBgColor;
-    /// OSC 12 - set cursor color
+    /// OSC 12 - sets the cursor color.
     pub const set_cursor = @import("osc.zig").setCursorColor;
-    /// OSC 110 - reset foreground to default
+    /// OSC 110 - resets the global foreground to default.
     pub const reset_fg = @import("osc.zig").resetFgColor;
-    /// OSC 111 - reset background to default
+    /// OSC 111 - resets the global background to default.
     pub const reset_bg = @import("osc.zig").resetBgColor;
-    /// OSC 112 - reset cursor color to default
+    /// OSC 112 - resets the cursor color to default.
     pub const reset_cursor = @import("osc.zig").resetCursorColor;
-    /// OSC 10? - query foreground color
+    /// OSC 10? - queries the global foreground color.
     pub const query_fg = @import("osc.zig").queryFgColor;
-    /// OSC 11? - query background color
+    /// OSC 11? - queries the global background color.
     pub const query_bg = @import("osc.zig").queryBgColor;
-    /// system notification (OSC 9 or 777 depending on terminal)
+    /// Triggers a native system notification (supports both OSC 9 and 777 formats).
     pub const notify = @import("osc.zig").notify;
 };
 
-/// terminal capability queries
+/// Terminal capability querying endpoints.
 pub const query = struct {
-    /// XTGETTCAP "TN" - query terminal name
+    /// XTGETTCAP "TN" - queries the terminal name.
     pub const term_name = @import("csi.zig").queryTermName;
-    /// DA1 - primary device attributes
+    /// DA1 - requests primary device attributes.
     pub const primary_da = @import("csi.zig").queryPrimaryDa;
-    /// DA2 - secondary device attributes
+    /// DA2 - requests secondary device attributes.
     pub const secondary_da = @import("csi.zig").querySecondaryDa;
-    /// XTGETTCAP - query a termcap capability by name
+    /// XTGETTCAP - queries a specific termcap capability by name.
     pub const termcap = @import("csi.zig").queryTermcap;
-    /// OSC 11? - query background color
+    /// OSC 11? - queries the active background color.
     pub const bg_color = @import("osc.zig").queryBgColor;
-    /// OSC 10? - query foreground color
+    /// OSC 10? - queries the active foreground color.
     pub const fg_color = @import("osc.zig").queryFgColor;
 };

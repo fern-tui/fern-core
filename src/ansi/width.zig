@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// UAX#11 / Unicode 15.1 width tables.
-// cpWidth: 0=combining, 1=normal, 2=wide
+//! Codepoint and string display measurement evaluation.
+//!
+//! Complies with UAX#11 (Unicode 15.1) tracking specifications for calculating
+//! East Asian Wide, combining, and standard half-width dimension blocks.
 
 const std = @import("std");
 
@@ -12,8 +14,6 @@ const Range = struct { lo: u21, hi: u21 };
 // It includes C0/C1 controls, the soft hyphen, and all the combining marks
 // from the spec.
 // Do not unsort this, it relies on binary search.
-
-// <AI>
 const COMBINING: []const Range = &.{
     .{ .lo = 0x0000, .hi = 0x0020 }, // C0 controls
     .{ .lo = 0x007F, .hi = 0x00A0 }, // DEL + C1 controls
@@ -394,8 +394,6 @@ const WIDE: []const Range = &.{
     .{ .lo = 0x30000, .hi = 0x40000 }, // CJK Ext G
 };
 
-// </AI>
-
 fn rangeContains(ranges: []const Range, cp: u21) bool {
     // binary search over sorted table
     var lo: usize = 0;
@@ -414,13 +412,26 @@ fn rangeContains(ranges: []const Range, cp: u21) bool {
     return false;
 }
 
+/// Evaluates the geometric screen width occupied by a specific Unicode codepoint.
+///
+/// Parameters:
+///   - cp: A valid Unicode scalar value.
+///
+/// Returns:
+///   `0` for combining characters/modifiers, `1` for standard ASCII/Latin, or `2` for East Asian Wide elements.
 pub fn cpWidth(cp: u21) u2 {
     if (rangeContains(COMBINING, cp)) return 0;
     if (rangeContains(WIDE, cp)) return 2;
     return 1;
 }
 
-// Cell width of a plain UTF-8 string
+/// Evaluates the raw cell width of a plain UTF-8 string, completely ignoring terminal escape logic.
+///
+/// Parameters:
+///   - s: The source text.
+///
+/// Returns:
+///   The total amount of logical screen cells needed to render the block.
 pub fn rawWidth(s: []const u8) usize {
     var w: usize = 0;
     var i: usize = 0;
@@ -437,8 +448,16 @@ pub fn rawWidth(s: []const u8) usize {
     return w;
 }
 
-// Cell width of an ANSI-escaped string
-// Skips CSI, OSC, DCS, and plain ESC+byte sequences
+/// Computes the correct visual width of an ANSI-encoded string structure.
+///
+/// Accurately steps over embedded CSI, OSC, DCS, and plain control escapes
+/// without factoring them into the final rendering length.
+///
+/// Parameters:
+///   - s: The source string payload.
+///
+/// Returns:
+///   The total physical amount of display screen columns the string occupies.
 pub fn strWidth(s: []const u8) usize {
     var w: usize = 0;
     var i: usize = 0;

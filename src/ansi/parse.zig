@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-// Parses raw VT/ANSI byte streams into Events.
-// Alloc-free wherever possible. The only exceptions are pasted text and
-// unknown sequences/OSC payloads. Everything else is handled on the stack.
-// TODO: wire up width.zig when we actually need it.
+//! Streaming VT/ANSI byte sequence parser.
+//!
+//! Parses raw terminal byte streams into discrete input events. Operates without
+//! allocation wherever possible. Allocations are strictly limited to pasted text
+//! blocks and unknown/unhandled sequence buffers.
 
 const std = @import("std");
 const color = @import("color.zig");
 
+/// Identifies the specific key pressed.
 pub const KeyCode = union(enum) {
     char: u21,
     enter,
@@ -25,7 +27,8 @@ pub const KeyCode = union(enum) {
     page_up,
     page_down,
     insert,
-    f: u8, // F1-F35, 1-indexed
+    /// Function keys F1-F35, 1-indexed.
+    f: u8,
     kp_enter,
     kp_char: u21,
     kp_up,
@@ -41,6 +44,7 @@ pub const KeyCode = union(enum) {
     kp_begin,
 };
 
+/// Modifier key state at the time of an event.
 pub const KeyMods = packed struct(u8) {
     shift: bool = false,
     ctrl: bool = false,
@@ -50,7 +54,7 @@ pub const KeyMods = packed struct(u8) {
     meta: bool = false,
     _pad: u2 = 0,
 
-    // CSI modifiers are 1-based: unmodified=1, shift=2, ctrl=5...
+    /// Returns the 1-based CSI modifier value (unmodified=1, shift=2, ctrl=5, etc).
     pub fn csiBit(self: KeyMods) u8 {
         var n: u8 = 0;
         if (self.shift) n |= 1;
@@ -60,6 +64,7 @@ pub const KeyMods = packed struct(u8) {
         return n + 1;
     }
 
+    /// Constructs modifier state from a parsed CSI parameter.
     pub fn fromCsi(param: u8) KeyMods {
         const v = param -| 1;
         return .{
@@ -71,6 +76,7 @@ pub const KeyMods = packed struct(u8) {
     }
 };
 
+/// Represents a keyboard action.
 pub const KeyEvent = struct {
     code: KeyCode,
     mods: KeyMods = .{},
@@ -79,6 +85,7 @@ pub const KeyEvent = struct {
     pub const KeyKind = enum { press, release, repeat };
 };
 
+/// Represents a mouse action or motion.
 pub const MouseEvent = struct {
     col: u16,
     row: u16,
@@ -104,25 +111,41 @@ pub const MouseEvent = struct {
     };
 };
 
+/// Terminal resize notification.
 pub const ResizeEvent = struct { cols: u16, rows: u16 };
+
+/// Terminal focus state change.
 pub const FocusEvent = enum { gained, lost };
-pub const PasteEvent = struct { text: []const u8 }; // caller owns
+
+/// Bracketed paste block.
+///
+/// The caller assumes ownership of the `text` slice and must free it.
+pub const PasteEvent = struct { text: []const u8 };
+
+/// Cursor Position Report (CPR) payload.
 pub const CursorPos = struct { row: u16, col: u16 };
+
+/// Response to an OSC color query (e.g., OSC 10/11/12).
 pub const ColorReport = struct { slot: u8, r: u16, g: u16, b: u16 };
+
+/// Primary or Secondary Device Attributes response.
 pub const DaResponse = struct { params: [8]u16, len: u4 };
+
+/// Response to a DECRPM mode query.
 pub const ModeReport = struct { mode: u16, value: u8 };
 
+/// Universal wrapper for all parsed terminal events.
 pub const Event = union(enum) {
     key: KeyEvent,
     mouse: MouseEvent,
     resize: ResizeEvent,
     focus: FocusEvent,
-    paste: PasteEvent, // allocates content slice
+    paste: PasteEvent,
     cursor_pos: CursorPos,
     color_report: ColorReport,
     da_response: DaResponse,
     mode_report: ModeReport,
-    unknown: []const u8, // allocates
+    unknown: []const u8, // caller owns
 };
 
 const State = enum {
@@ -166,6 +189,7 @@ const CsiParams = struct {
     }
 };
 
+/// Stateful sequence parser.
 pub const Parser = struct {
     state: State = .ground,
     param_buf: [32]u8 = undefined,
@@ -181,15 +205,20 @@ pub const Parser = struct {
     sgr_lt: bool = false, // saw '<' in CSI param (SGR mouse prefix)
     paste_buf: std.ArrayList(u8) = .empty,
 
+    /// Initializes a new parser context.
     pub fn init() Parser {
         return .{};
     }
 
-    // Release the internal paste buffer. Call when the parser is no longer needed.
+    /// Releases internal resources. Call when the parser is no longer needed.
+    ///
+    /// Parameters:
+    ///   - alloc: The allocator mapped to the internal paste buffer.
     pub fn deinit(self: *Parser, alloc: std.mem.Allocator) void {
         self.paste_buf.deinit(alloc);
     }
 
+    /// Resets the parser state machine to ground without freeing resources.
     pub fn reset(self: *Parser) void {
         self.state = .ground;
         self.param_len = 0;
@@ -201,6 +230,14 @@ pub const Parser = struct {
         self.sgr_lt = false;
     }
 
+    /// Consumes a single byte, advancing the internal state machine.
+    ///
+    /// Parameters:
+    ///   - byte: The raw stream byte.
+    ///   - alloc: Allocator used solely for paste payloads or unknown chunks.
+    ///
+    /// Returns:
+    ///   An optional `Event` if the byte completed a sequence, otherwise `null`.
     pub fn feed(
         self: *Parser,
         byte: u8,
@@ -222,6 +259,14 @@ pub const Parser = struct {
         };
     }
 
+    /// Feeds a contiguous slice of bytes, returning early on the first completed event.
+    ///
+    /// Parameters:
+    ///   - bytes: Input stream segment.
+    ///   - alloc: Allocator used solely for paste payloads or unknown chunks.
+    ///
+    /// Returns:
+    ///   The first parsed `Event`, or `null` if the slice contained incomplete sequences.
     pub fn feedSlice(
         self: *Parser,
         bytes: []const u8,
@@ -233,6 +278,12 @@ pub const Parser = struct {
         return null;
     }
 
+    /// Feeds a contiguous slice of bytes, accumulating all resulting events.
+    ///
+    /// Parameters:
+    ///   - bytes: Input stream segment.
+    ///   - out_events: ArrayList to populate with parsed events.
+    ///   - alloc: Allocator used solely for paste payloads or unknown chunks.
     pub fn feedAll(
         self: *Parser,
         bytes: []const u8,

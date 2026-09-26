@@ -1,28 +1,36 @@
 // SPDX-License-Identifier: MIT
+//
+// Minimal Fern application: an animated DOT spinner.
+// Demonstrates the `app.runSimple` entry point and the TEA (Elm) architecture loop.
+//
+// Run:
+//   zig build example-minimal
 
-// minimal fern app. a spinner that runs until you press q.
-// shows the runSimple entry point
-// zig build example-minimal
 const std = @import("std");
-const ansi = @import("fern_ansi");
-const style = @import("fern_style");
-const app = @import("fern_app");
-const widget = @import("fern_widget");
+const fern = @import("fern");
+const app = fern.app;
+const widget = fern.widget;
+const style = fern.style;
+
 const Msg = union(enum) {
-    key: ansi.KeyEvent,
+    key: fern.ansi.KeyEvent,
     spinner_tick: widget.spinner.TickMsg,
 };
-const State = struct { spinner: widget.Spinner };
+
+const State = struct {
+    spinner: widget.Spinner,
+};
+
+// Cyan spinner accent
 const SPIN_STYLE = style.Style.init().fg_(.{ .ansi16 = .cyan });
 
-fn init(alloc: std.mem.Allocator) !struct { State, ?app.Cmd(Msg) } {
-    _ = alloc;
+fn init(_: std.mem.Allocator) !struct { State, ?app.Cmd(Msg) } {
     var sp = widget.Spinner.initPreset(widget.spinner.DOT);
     sp.setStyle(SPIN_STYLE);
     return .{ .{ .spinner = sp }, sp.tick(Msg) };
 }
-fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
-    _ = alloc;
+
+fn update(state: *State, msg: Msg, _: std.mem.Allocator) !?app.Cmd(Msg) {
     return switch (msg) {
         .key => |k| if (widget.key.isQuit(k)) .quit else null,
         .spinner_tick => |t| blk: {
@@ -32,17 +40,18 @@ fn update(state: *State, msg: Msg, alloc: std.mem.Allocator) !?app.Cmd(Msg) {
         },
     };
 }
+
 fn view(state: *const State, alloc: std.mem.Allocator) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(alloc);
-    try out.appendSlice(alloc, "   ");
     const frame = try state.spinner.view(alloc);
     defer alloc.free(frame);
-    try out.appendSlice(alloc, frame);
-    try out.appendSlice(alloc, " Loading...  press q to quit");
-    return out.toOwnedSlice(alloc);
+
+    return std.fmt.allocPrint(alloc, "   {s} Loading...  press q to quit", .{frame});
 }
 
-pub fn main(_: std.process.Init) !void {
-    try app.runSimple(State, Msg, .{ .init = init, .update = update, .view = view }, .{});
+pub fn main() !void {
+    try app.runSimple(State, Msg, .{
+        .init = init,
+        .update = update,
+        .view = view,
+    }, .{});
 }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// Terminal CSI sequence helpers.
-// Everything takes a Writer and operates completely on the stack.
+//! Terminal Control Sequence Introducer (CSI) generators.
+//!
+//! All functions take an `anytype` writer and operate completely on the stack
+//! without incurring allocation overhead. Emits directly into the byte stream.
 
 const std = @import("std");
 const color = @import("color.zig");
@@ -10,7 +12,7 @@ pub const Color = color.Color;
 pub const ColorProfile = color.ColorProfile;
 pub const Ansi16 = color.Ansi16;
 
-// SGR formatting for a single cell/span.
+/// SGR attributes corresponding to a single cell or display span.
 pub const Attrs = struct {
     bold: bool = false,
     faint: bool = false,
@@ -35,6 +37,7 @@ pub const Attrs = struct {
 
     pub const Blink = enum { none, slow, rapid };
 
+    /// Evaluates if any attribute deviates from the terminal default.
     pub fn any(self: Attrs) bool {
         return self.bold or self.faint or self.italic or
             self.reverse or self.conceal or self.strike or
@@ -42,6 +45,7 @@ pub const Attrs = struct {
             self.fg != .none or self.bg != .none or self.ul_color != .none;
     }
 
+    /// Tests strict structural equality between two attribute sets.
     pub fn eql(a: Attrs, b: Attrs) bool {
         return a.bold == b.bold and
             a.faint == b.faint and
@@ -56,7 +60,7 @@ pub const Attrs = struct {
             std.meta.eql(a.ul_color, b.ul_color);
     }
 
-    // Apply b to a. Ignores defaults in b.
+    /// Overlays the properties of `b` onto `a`. Unset defaults in `b` are ignored.
     pub fn merge(a: Attrs, b: Attrs) Attrs {
         return .{
             .bold = if (b.bold) b.bold else a.bold,
@@ -74,6 +78,7 @@ pub const Attrs = struct {
     }
 };
 
+/// Defined shapes for DECSCUSR cursor styling.
 pub const CursorShape = enum {
     default,
     blinking_block,
@@ -84,6 +89,7 @@ pub const CursorShape = enum {
     bar,
 };
 
+/// Targets for ED (Erase in Display) sequence.
 pub const EraseDisplay = enum {
     below,
     above,
@@ -91,12 +97,14 @@ pub const EraseDisplay = enum {
     scrollback,
 };
 
+/// Targets for EL (Erase in Line) sequence.
 pub const EraseLine = enum {
     to_end,
     to_start,
     all,
 };
 
+/// Common VT100 / DEC Private modes.
 pub const Mode = enum(u16) {
     cursor_visible = 25,
     alt_screen = 1049,
@@ -117,6 +125,7 @@ pub const Mode = enum(u16) {
     color_scheme_updates = 2031,
 };
 
+/// Extents for terminal mouse report generation.
 pub const MouseTrackingMode = enum {
     none,
     x10,
@@ -146,22 +155,27 @@ fn writeU8(w: anytype, n: u8) !void {
     try writeU16(w, n);
 }
 
+/// Emits `ESC[0m` to clear all SGR styling formats.
 pub fn sgrReset(w: anytype) !void {
     try w.writeAll("\x1b[0m");
 }
 
+/// Enables or disables bold text formatting.
 pub fn sgrBold(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[1m" else "\x1b[22m");
 }
 
+/// Enables or disables faint/dim text formatting.
 pub fn sgrFaint(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[2m" else "\x1b[22m");
 }
 
+/// Enables or disables italicized text.
 pub fn sgrItalic(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[3m" else "\x1b[23m");
 }
 
+/// Applies a specific underline stroke format.
 pub fn sgrUnderline(w: anytype, style: Attrs.Underline) !void {
     switch (style) {
         .none => try w.writeAll("\x1b[24m"),
@@ -173,6 +187,7 @@ pub fn sgrUnderline(w: anytype, style: Attrs.Underline) !void {
     }
 }
 
+/// Applies standard or rapid blinking effects.
 pub fn sgrBlink(w: anytype, b: Attrs.Blink) !void {
     switch (b) {
         .none => try w.writeAll("\x1b[25m"),
@@ -181,18 +196,22 @@ pub fn sgrBlink(w: anytype, b: Attrs.Blink) !void {
     }
 }
 
+/// Enables or disables color inversion formatting.
 pub fn sgrReverse(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[7m" else "\x1b[27m");
 }
 
+/// Enables or disables text conceal/hidden formatting.
 pub fn sgrConceal(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[8m" else "\x1b[28m");
 }
 
+/// Enables or disables strikethrough text formatting.
 pub fn sgrStrike(w: anytype, on: bool) !void {
     try w.writeAll(if (on) "\x1b[9m" else "\x1b[29m");
 }
 
+/// Emits the appropriate SGR codes to set the foreground color.
 pub fn sgrFg(w: anytype, c: Color) !void {
     switch (c) {
         .none => try w.writeAll("\x1b[39m"),
@@ -223,6 +242,7 @@ pub fn sgrFg(w: anytype, c: Color) !void {
     }
 }
 
+/// Emits the appropriate SGR codes to set the background color.
 pub fn sgrBg(w: anytype, c: Color) !void {
     switch (c) {
         .none => try w.writeAll("\x1b[49m"),
@@ -253,6 +273,7 @@ pub fn sgrBg(w: anytype, c: Color) !void {
     }
 }
 
+/// Emits the appropriate SGR codes to set the underline stroke color.
 pub fn sgrUlColor(w: anytype, c: Color) !void {
     switch (c) {
         .none => try w.writeAll("\x1b[59m"),
@@ -277,8 +298,16 @@ pub fn sgrUlColor(w: anytype, c: Color) !void {
     }
 }
 
-// Only emits the diff between prev and next.
-// For the initial render, just pass an empty Attrs{} as prev to force-emit everything.
+/// Delta-encodes SGR updates by emitting only parameters that changed.
+///
+/// For the initial render state, pass an empty `Attrs{}` as `prev` to force
+/// a full re-evaluation.
+///
+/// Parameters:
+///   - w: Standard output writer.
+///   - prev: The currently evaluated attributes state.
+///   - next: The target attributes state.
+///   - profile: Defines boundaries for color downgrade translation.
 pub fn sgrDiff(w: anytype, prev: Attrs, next: Attrs, profile: ColorProfile) !void {
     if (Attrs.eql(prev, next)) return;
 
@@ -319,48 +348,56 @@ pub fn sgrDiff(w: anytype, prev: Attrs, next: Attrs, profile: ColorProfile) !voi
     }
 }
 
+/// Translates the cursor up `n` rows.
 pub fn cursorUp(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("A");
 }
 
+/// Translates the cursor down `n` rows.
 pub fn cursorDown(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("B");
 }
 
+/// Translates the cursor forward/right `n` columns.
 pub fn cursorForward(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("C");
 }
 
+/// Translates the cursor back/left `n` columns.
 pub fn cursorBack(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("D");
 }
 
+/// Translates the cursor down `n` rows and left to column 1.
 pub fn cursorNextLine(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("E");
 }
 
+/// Translates the cursor up `n` rows and left to column 1.
 pub fn cursorPrevLine(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, if (n == 0) 1 else n);
     try w.writeAll("F");
 }
 
+/// Translates the cursor to absolute horizontal coordinate `col` on the active row.
 pub fn cursorCol(w: anytype, col: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, col);
     try w.writeAll("G");
 }
 
+/// Sets absolute row and column positioning.
 pub fn cursorPos(w: anytype, row: u16, col: u16) !void {
     // ESC[H is the canonical home (1;1)
     if (row == 1 and col == 1) {
@@ -374,30 +411,37 @@ pub fn cursorPos(w: anytype, row: u16, col: u16) !void {
     try w.writeAll("H");
 }
 
+/// Moves the cursor to origin `(1;1)`.
 pub fn cursorHome(w: anytype) !void {
     try w.writeAll("\x1b[H");
 }
 
+/// Issues DECSC to save active cursor state.
 pub fn cursorSave(w: anytype) !void {
     try w.writeAll("\x1b[s");
 }
 
+/// Issues DECRC to retrieve saved cursor state.
 pub fn cursorRestore(w: anytype) !void {
     try w.writeAll("\x1b[u");
 }
 
+/// Issues DEC format cursor save.
 pub fn cursorSaveDec(w: anytype) !void {
     try w.writeAll("\x1b7");
 }
 
+/// Issues DEC format cursor restore.
 pub fn cursorRestoreDec(w: anytype) !void {
     try w.writeAll("\x1b8");
 }
 
+/// Issues CPR (Cursor Position Report) querying current state.
 pub fn cursorRequest(w: anytype) !void {
     try w.writeAll("\x1b[6n");
 }
 
+/// Changes the active cursor geometric representation.
 pub fn cursorShape(w: anytype, shape: CursorShape) !void {
     const n: u8 = switch (shape) {
         .default => 0,
@@ -413,6 +457,7 @@ pub fn cursorShape(w: anytype, shape: CursorShape) !void {
     try w.writeAll(" q");
 }
 
+/// Transmits ED sequences targeting viewport clears.
 pub fn eraseDisplay(w: anytype, mode: EraseDisplay) !void {
     const n: u8 = switch (mode) {
         .below => 0,
@@ -425,6 +470,7 @@ pub fn eraseDisplay(w: anytype, mode: EraseDisplay) !void {
     try w.writeAll("J");
 }
 
+/// Transmits EL sequences targeting active row clears.
 pub fn eraseLine(w: anytype, mode: EraseLine) !void {
     const n: u8 = switch (mode) {
         .to_end => 0,
@@ -436,79 +482,97 @@ pub fn eraseLine(w: anytype, mode: EraseLine) !void {
     try w.writeAll("K");
 }
 
+/// Scrolls display buffer contents upward by `n` lines.
 pub fn scrollUp(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("S");
 }
 
+/// Scrolls display buffer contents downward by `n` lines.
 pub fn scrollDown(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("T");
 }
 
+/// Inserts `n` blank lines at cursor location.
 pub fn insertLines(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("L");
 }
 
+/// Deletes `n` lines starting from cursor location.
 pub fn deleteLines(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("M");
 }
 
+/// Inserts `n` blank characters.
 pub fn insertChars(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("@");
 }
 
+/// Deletes `n` characters.
 pub fn deleteChars(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("P");
 }
 
+/// Erases `n` characters without translating cursor position.
 pub fn eraseChars(w: anytype, n: u16) !void {
     try w.writeAll("\x1b[");
     try writeU16(w, n);
     try w.writeAll("X");
 }
 
+/// Enables DEC private configuration mode.
 pub fn modeSet(w: anytype, mode: Mode) !void {
     try w.writeAll("\x1b[?");
     try writeU16(w, @intFromEnum(mode));
     try w.writeAll("h");
 }
 
+/// Disables DEC private configuration mode.
 pub fn modeReset(w: anytype, mode: Mode) !void {
     try w.writeAll("\x1b[?");
     try writeU16(w, @intFromEnum(mode));
     try w.writeAll("l");
 }
 
+/// Queries state of a targeted DEC private mode parameter.
 pub fn modeQuery(w: anytype, mode: Mode) !void {
     try w.writeAll("\x1b[?");
     try writeU16(w, @intFromEnum(mode));
     try w.writeAll("$p");
 }
 
+/// Makes cursor visible (DECTCEM on).
 pub fn showCursor(w: anytype) !void {
     try modeSet(w, .cursor_visible);
 }
+
+/// Disables cursor visibility (DECTCEM off).
 pub fn hideCursor(w: anytype) !void {
     try modeReset(w, .cursor_visible);
 }
+
+/// Transitions to Alternate Screen Buffer.
 pub fn altScreenEnter(w: anytype) !void {
     try modeSet(w, .alt_screen);
 }
+
+/// Transitions to Default Screen Buffer.
 pub fn altScreenLeave(w: anytype) !void {
     try modeReset(w, .alt_screen);
 }
 
+/// Triggers mouse event monitoring constraints.
 pub fn mouseTrackingEnter(w: anytype, mode: MouseTrackingMode) !void {
     switch (mode) {
         .none => {},
@@ -522,6 +586,7 @@ pub fn mouseTrackingEnter(w: anytype, mode: MouseTrackingMode) !void {
     }
 }
 
+/// Halts mouse tracking monitoring mechanisms.
 pub fn mouseTrackingLeave(w: anytype) !void {
     try modeReset(w, .mouse_any);
     try modeReset(w, .mouse_button);
@@ -530,35 +595,52 @@ pub fn mouseTrackingLeave(w: anytype) !void {
     try modeReset(w, .mouse_sgr);
 }
 
+/// Enables bracketed paste mode (DEC 2004).
 pub fn bracketedPasteEnter(w: anytype) !void {
     try modeSet(w, .bracketed_paste);
 }
+
+/// Disables bracketed paste mode.
 pub fn bracketedPasteLeave(w: anytype) !void {
     try modeReset(w, .bracketed_paste);
 }
+
+/// Enables focus notification tracking (DEC 1004).
 pub fn focusReportingEnter(w: anytype) !void {
     try modeSet(w, .focus_events);
 }
+
+/// Disables focus notification tracking.
 pub fn focusReportingLeave(w: anytype) !void {
     try modeReset(w, .focus_events);
 }
+
+/// Opens Synchronized Output transaction (DEC 2026).
 pub fn syncOutputBegin(w: anytype) !void {
     try modeSet(w, .synchronized_output);
 }
+
+/// Closes Synchronized Output transaction.
 pub fn syncOutputEnd(w: anytype) !void {
     try modeReset(w, .synchronized_output);
 }
 
+/// Dispatches XTGETTCAP terminal identification request.
 pub fn queryTermName(w: anytype) !void {
     try w.writeAll("\x1b[>q");
 }
+
+/// Sends Primary Device Attributes (DA1) request.
 pub fn queryPrimaryDa(w: anytype) !void {
     try w.writeAll("\x1b[0c");
 }
+
+/// Sends Secondary Device Attributes (DA2) request.
 pub fn querySecondaryDa(w: anytype) !void {
     try w.writeAll("\x1b[>0c");
 }
 
+/// Submits termcap capability string query (XTGETTCAP).
 pub fn queryTermcap(w: anytype, cap: []const u8) !void {
     try w.writeAll("\x1bP+q");
     // hex-encode cap name
