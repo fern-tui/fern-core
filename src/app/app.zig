@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-
-// Runtime, raw mode, and event loop.
-// Note: Linux/macOS only. Windows throws a compile error.
 //
-// Threads:
-// 1. Main (event loop)
-// 2. Stdin reader (feeds parser)
-// N. Ephemeral workers for async tasks
-// (SIGWINCH is handled via a self-pipe, not a thread).
+// Application Runtime, raw mode, and event loop.
+// Note: Linux/macOS only.
+//
+// Concurrency Model:
+// 1. Main Thread: Event loop, diff renderer, state dispatch.
+// 2. Stdin Reader Thread: Reads raw bytes, feeds ANSI parser.
+// 3. Ephemeral Task Threads: Background async Cmd workers.
+// (SIGWINCH is handled asynchronously via a signal self-pipe).
 
 const std = @import("std");
 const ansi = @import("fern_ansi");
@@ -19,16 +19,10 @@ pub const Cmd = cmd.Cmd;
 pub const Renderer = ren.Renderer;
 
 const FPS_DEFAULT: u32 = 60;
-
-// 16 ms poll timeout gives ~62 fps, close enough to FPS_DEFAULT.
 const POLL_TIMEOUT_MS: i32 = 1000 / FPS_DEFAULT;
-
-// Maximum bytes read from stdin per input-reader iteration.
 const STDIN_READ_BUF: usize = 4096;
 
-/// runtime options for the event loop.
-/// all fields default to the current behaviour, so existing
-/// run() calls are unaffected.
+/// Runtime configuration options for the application event loop.
 pub const RunOptions = struct {
     alt_screen: bool = false,
     fps: u32 = FPS_DEFAULT,
@@ -37,62 +31,34 @@ pub const RunOptions = struct {
 };
 
 // Global signal pipe (write end).
-// Required because sigaction doesn't take context. Initialized once in run().
-// (Limits us to one App instance per process, which is fine).
+// Initialized once per process run.
 var g_sig_pipe_w: std.posix.fd_t = -1;
 
-// SIGWINCH handler (cross-platform signature).
-// Must be async-signal-safe, hence the raw sys.write().
 fn sigwinchHandler(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
     const byte: [1]u8 = .{0};
     _ = sys.write(g_sig_pipe_w, byte[0..].ptr, 1);
 }
 
-// Handlers >>
-
-/// The main app interface (init, update, view).
-/// State = your model, MsgT = your event union.
+/// The primary application interface (Model-Update-View).
 pub fn Handlers(comptime State: type, comptime MsgT: type) type {
     return struct {
-        /// Called once at startup. Returns the initial state AND an optional startup command.
         init: *const fn (alloc: std.mem.Allocator) anyerror!struct { State, ?Cmd(MsgT) },
-
-        /// Called for every message.  Returns an optional Cmd (null == .none).
-        update: *const fn (
-            state: *State,
-            msg: MsgT,
-            alloc: std.mem.Allocator,
-        ) anyerror!?Cmd(MsgT),
-
-        /// Returns the rendered frame string for this state.
-        /// The runtime frees the returned slice.
-        view: *const fn (
-            state: *const State,
-            alloc: std.mem.Allocator,
-        ) anyerror![]u8,
+        update: *const fn (state: *State, msg: MsgT, alloc: std.mem.Allocator) anyerror!?Cmd(MsgT),
+        view: *const fn (state: *const State, alloc: std.mem.Allocator) anyerror![]u8,
     };
 }
+
 // Thread-safe MPSC queue.
-// We just use a dumb atomic spinlock here. The critical section is so short
-// (< 1us) and contention is so low (< 4 workers) that a real OS mutex is overkill.
 const MsgQueue = struct {
-
-    // types
-
-    /// Type-erased message.  Re-typed in the event loop.
     const AnyMsg = union(enum) {
-        event: ansi.Event, // from input reader thread
-        raw: *anyopaque, // from command worker threads (type-erased MsgT ptr)
+        event: ansi.Event,
+        raw: *anyopaque,
     };
-
-    // fields
 
     items: std.ArrayList(AnyMsg),
     locked: std.atomic.Value(bool),
     alloc: std.mem.Allocator,
-
-    // lifecycle
 
     fn init(allocator: std.mem.Allocator) MsgQueue {
         return .{
@@ -106,27 +72,18 @@ const MsgQueue = struct {
         self.items.deinit(self.alloc);
     }
 
-    // producers
-
-    /// Push a parsed event from the input reader thread.
     fn pushEvent(self: *MsgQueue, ev: ansi.Event) error{OutOfMemory}!void {
         self.acquire();
         defer self.release();
         try self.items.append(self.alloc, .{ .event = ev });
     }
 
-    /// Push a type-erased MsgT from a command worker thread.
-    /// Caller heap-allocates a copy; the event loop casts and frees it.
     fn pushRaw(self: *MsgQueue, ptr: *anyopaque) error{OutOfMemory}!void {
         self.acquire();
         defer self.release();
         try self.items.append(self.alloc, .{ .raw = ptr });
     }
 
-    // consumer
-
-    /// Drain all pending messages.  Caller owns the returned slice.
-    /// Returns an empty slice if nothing is pending.
     fn drainAll(self: *MsgQueue, allocator: std.mem.Allocator) error{OutOfMemory}![]AnyMsg {
         self.acquire();
         defer self.release();
@@ -135,8 +92,6 @@ const MsgQueue = struct {
         self.items.clearRetainingCapacity();
         return copy;
     }
-
-    // spinlock
 
     fn acquire(self: *MsgQueue) void {
         while (self.locked.cmpxchgWeak(false, true, .acquire, .monotonic) != null) {
@@ -149,7 +104,7 @@ const MsgQueue = struct {
     }
 };
 
-// InputReaderThread -- reads raw bytes from stdin, feeds the ANSI parser
+// Input Reader Thread
 const InputReaderThread = struct {
     stdin_fd: std.posix.fd_t,
     cmd_pipe_w: std.posix.fd_t,
@@ -161,14 +116,11 @@ const InputReaderThread = struct {
 
 fn inputReaderFn(args: *InputReaderThread) void {
     var buf: [STDIN_READ_BUF]u8 = undefined;
-
-    // Watch stdin for reading
     var fds: [1]std.posix.pollfd = .{
         .{ .fd = args.stdin_fd, .events = std.posix.POLL.IN, .revents = 0 },
     };
 
     while (!args.stop.load(.seq_cst)) {
-        // Poll with a 50ms timeout to prevent deadlock during shutdown
         const ready = std.posix.poll(&fds, 50) catch 0;
 
         if (ready > 0 and (fds[0].revents & std.posix.POLL.IN != 0)) {
@@ -184,13 +136,12 @@ fn inputReaderFn(args: *InputReaderThread) void {
                 args.queue.pushEvent(ev) catch continue;
             }
 
-            // Wake the event loop
             wakeLoop(args.cmd_pipe_w);
         }
     }
 }
 
-// CmdWorker -- runs a .task on a worker thread
+// Background worker for async .task Cmds
 fn CmdWorker(comptime MsgT: type) type {
     return struct {
         task_ctx: *anyopaque,
@@ -198,7 +149,6 @@ fn CmdWorker(comptime MsgT: type) type {
         queue: *MsgQueue,
         cmd_pipe_w: std.posix.fd_t,
         alloc: std.mem.Allocator,
-        // Pointer to self so the worker can free its own allocation on exit.
         self_ptr: *@This(),
 
         fn run(self: *@This()) void {
@@ -206,7 +156,6 @@ fn CmdWorker(comptime MsgT: type) type {
 
             const result = self.task_run(self.task_ctx, self.alloc) catch return;
 
-            // Heap-allocate a copy of MsgT for type-erased queue transfer.
             const heap_msg = self.alloc.create(MsgT) catch return;
             heap_msg.* = result;
 
@@ -220,15 +169,11 @@ fn CmdWorker(comptime MsgT: type) type {
     };
 }
 
-// Wakes the main loop via the command pipe.
-// Thread-safe and async-signal-safe (raw sys.write).
 inline fn wakeLoop(pipe_w: std.posix.fd_t) void {
     const byte: [1]u8 = .{0};
     _ = sys.write(pipe_w, byte[0..].ptr, 1);
 }
 
-// Write accumulated renderer output to the terminal and reset the buffer.
-// Must be called after every renderer.render() and renderer.moveToTop().
 fn flushOut(out_aw: *std.Io.Writer.Allocating, fd: std.posix.fd_t) void {
     const data = out_aw.written();
     if (data.len == 0) return;
@@ -236,8 +181,6 @@ fn flushOut(out_aw: *std.Io.Writer.Allocating, fd: std.posix.fd_t) void {
     out_aw.clearRetainingCapacity();
 }
 
-// Main event loop. Blocks until Cmd.quit or a fatal error.
-// Always cleans up and restores the terminal before returning.
 fn runImpl(
     comptime State: type,
     comptime MsgT: type,
@@ -245,7 +188,6 @@ fn runImpl(
     opts: RunOptions,
     alloc: std.mem.Allocator,
 ) !void {
-    // Comptime guard: MsgT must be a tagged union.
     comptime {
         if (@typeInfo(MsgT) != .@"union") @compileError("MsgT must be a tagged union");
     }
@@ -253,23 +195,19 @@ fn runImpl(
     const stdin_fd = std.posix.STDIN_FILENO;
     const stdout_fd = std.posix.STDOUT_FILENO;
 
-    // signal pipe
     var sig_pipe: [2]std.posix.fd_t = undefined;
     try sys.initPipe(&sig_pipe);
-    errdefer sys.closePipe(&sig_pipe);
+    defer sys.closePipe(&sig_pipe);
     g_sig_pipe_w = sig_pipe[1];
 
-    // command wakeup pipe
     var cmd_pipe: [2]std.posix.fd_t = undefined;
     try sys.initPipe(&cmd_pipe);
-    errdefer sys.closePipe(&cmd_pipe);
+    defer sys.closePipe(&cmd_pipe);
 
-    // raw terminal mode
-    // Restore termios FIRST in cleanup so output-processing flags are back
-    // in effect when we emit escape sequences during teardown.
+    // Raw mode setup & guaranteed teardown
     const orig_termios = try std.posix.tcgetattr(stdin_fd);
-    errdefer std.posix.tcsetattr(stdin_fd, .FLUSH, orig_termios) catch {};
     try setRawMode(stdin_fd);
+    defer std.posix.tcsetattr(stdin_fd, .FLUSH, orig_termios) catch {};
 
     // SIGWINCH handler
     var old_sa: std.posix.Sigaction = undefined;
@@ -279,25 +217,32 @@ fn runImpl(
         .flags = 0,
     };
     std.posix.sigaction(std.posix.SIG.WINCH, &new_sa, &old_sa);
-    errdefer std.posix.sigaction(std.posix.SIG.WINCH, &old_sa, null);
+    defer std.posix.sigaction(std.posix.SIG.WINCH, &old_sa, null);
 
-    // message queue
     var queue = MsgQueue.init(alloc);
     defer queue.deinit();
 
-    // initial terminal size
     var term_cols: u16 = 80;
     var term_rows: u16 = 24;
     sys.queryTerminalSize(stdout_fd, &term_cols, &term_rows);
 
-    // renderer
     var out_aw: std.Io.Writer.Allocating = .init(alloc);
     defer out_aw.deinit();
 
     var renderer = Renderer.init(alloc, &out_aw.writer, term_cols, term_rows);
     defer renderer.deinit();
 
-    // input reader thread
+    // Synchronize renderer's alt_screen mode with opts!
+    renderer.setAltScreen(opts.alt_screen);
+
+    defer {
+        if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049l") catch {};
+        out_aw.writer.writeAll("\x1B[?25h") catch {}; // Show cursor
+        if (opts.mouse) out_aw.writer.writeAll("\x1B[?1000l\x1B[?1006l") catch {};
+        flushOut(&out_aw, stdout_fd);
+    }
+
+    // Stdin Reader Thread
     var stop_flag = std.atomic.Value(bool).init(false);
     var reader_state = InputReaderThread{
         .stdin_fd = stdin_fd,
@@ -313,26 +258,23 @@ fn runImpl(
         reader_thread.join();
     }
 
-    // user init
+    // User init & startup
     const init_result = try handlers.init(alloc);
     var state = init_result[0];
     const initial_cmd = init_result[1];
 
-    // Dispatch startup commands (spawns initial worker/timer threads)
     _ = try dispatchCmd(MsgT, initial_cmd, &queue, cmd_pipe[1], alloc);
 
-    // query sync output support (mode 2026)
-    // Emit DECRQM (ESC[?2026$p); the ModeReport event arrives later via the parser.
+    // Query sync output support (mode 2026)
     out_aw.writer.writeAll("\x1B[?2026$p") catch {};
     flushOut(&out_aw, stdout_fd);
 
-    // startup sequences
+    // Startup sequences
+    if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049h") catch {};
     if (opts.hide_cursor) out_aw.writer.writeAll("\x1B[?25l") catch {};
     if (opts.mouse) out_aw.writer.writeAll("\x1B[?1000h\x1B[?1006h") catch {};
-    if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049h") catch {};
     flushOut(&out_aw, stdout_fd);
 
-    // poll timeout derived from requested fps
     const poll_timeout_ms: i32 = @intCast(1000 / opts.fps);
 
     try eventLoop(
@@ -351,29 +293,8 @@ fn runImpl(
         poll_timeout_ms,
         alloc,
     );
-
-    // terminal restore
-    // Order (reverse of setup):
-    //   1. Restore termios (re-enables OPOST so escape sequences render)
-    //   2. Show cursor
-    //   3. Disable mouse tracking
-    //   4. Restore SIGWINCH handler
-    //   5. Close pipes
-
-    std.posix.tcsetattr(stdin_fd, .FLUSH, orig_termios) catch {};
-    if (opts.alt_screen) out_aw.writer.writeAll("\x1B[?1049l") catch {}; // leave alt screen
-    out_aw.writer.writeAll("\x1B[?25h") catch {}; // show cursor
-    out_aw.writer.writeAll("\x1B[?1000l\x1B[?1006l") catch {}; // disable mouse
-    flushOut(&out_aw, stdout_fd);
-
-    std.posix.sigaction(std.posix.SIG.WINCH, &old_sa, null);
-    sys.closePipe(&sig_pipe);
-    sys.closePipe(&cmd_pipe);
 }
 
-// TODO: have to fix the run enterface laterr...
-// Main event loop. Blocks until Cmd.quit or a fatal error.
-// Always cleans up and restores the terminal before returning.
 pub fn run(
     comptime State: type,
     comptime MsgT: type,
@@ -383,7 +304,6 @@ pub fn run(
     return runImpl(State, MsgT, handlers, .{}, alloc);
 }
 
-/// like run() but accepts RunOptions to configure terminal behaviour.
 pub fn runOpts(
     comptime State: type,
     comptime MsgT: type,
@@ -394,23 +314,20 @@ pub fn runOpts(
     return runImpl(State, MsgT, handlers, opts, alloc);
 }
 
-/// Zero-boilerplate application bootstrap...
-/// Wraps the run loop in an Arena, managges terminal state, and handles clean
-/// exits. Keeps your `main()` completely free of memory and context plumbeng.
 pub fn runSimple(
     comptime State: type,
     comptime MsgT: type,
     handlers: Handlers(State, MsgT),
     opts: RunOptions,
 ) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    try runImpl(State, MsgT, handlers, opts, arena.allocator());
+    const alloc = std.heap.smp_allocator;
+
+    try runImpl(State, MsgT, handlers, opts, alloc);
+
+    // Clean newline on exit so next prompt isn't glued to the last line
     _ = sys.write(std.posix.STDOUT_FILENO, "\n".ptr, 1);
-    std.process.exit(0);
 }
 
-// inner loop, separated from runImpl() for length discipline
 fn eventLoop(
     comptime State: type,
     comptime MsgT: type,
@@ -432,30 +349,37 @@ fn eventLoop(
         .{ .fd = cmd_pipe_r, .events = std.posix.POLL.IN, .revents = 0 },
     };
 
-    // Force the first frame to render immediately on loop entry
+    // Frame arena: recycled every frame to eliminate heap fragmentation
+    var frame_arena = std.heap.ArenaAllocator.init(alloc);
+    defer frame_arena.deinit();
+
     var should_render = true;
 
     loop: while (true) {
-        // render (at TOP of loop so frame 0 works perfectly)
         if (should_render) {
-            const frame = try handlers.view(state, alloc);
-            defer alloc.free(frame);
+            // Allocate the frame view from the scratch arena
+            const frame_alloc = frame_arena.allocator();
+            const frame = try handlers.view(state, frame_alloc);
+
             if (!using_alt_screen) try renderer.moveToTop();
             try renderer.render(frame);
             flushOut(out_aw, stdout_fd);
+
+            // Reclaim frame memory immediately while retaining capacity
+            _ = frame_arena.reset(.retain_capacity);
             should_render = false;
         }
 
         _ = std.posix.poll(&fds, poll_timeout_ms) catch break;
 
-        // SIGWINCH (resize)
+        // SIGWINCH
         if (fds[0].revents & std.posix.POLL.IN != 0) {
             drainPipe(sig_pipe_r);
             try handleResize(MsgT, state, handlers, renderer, queue, cmd_pipe_w, stdout_fd, alloc);
             should_render = true;
         }
 
-        // input / command wakeup
+        // Input / command wakeup
         if (fds[1].revents & std.posix.POLL.IN != 0) {
             drainPipe(cmd_pipe_r);
             const quit = try processQueue(MsgT, state, handlers, renderer, queue, cmd_pipe_w, alloc);
