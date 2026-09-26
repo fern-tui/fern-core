@@ -62,7 +62,7 @@ Add the dependency to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .fern = .{
-        .url = "https://github.com/fern-tui/fern-core/archive/refs/tags/v0.1.5-beta9.tar.gz",
+        .url = "https://github.com/fern-tui/fern-core/archive/refs/tags/v0.1.6-beta.14.tar.gz",
         .hash = "...",
     },
 },
@@ -71,7 +71,7 @@ Add the dependency to your `build.zig.zon`:
 Fetch and lock the hash:
 
 ```sh
-zig fetch --save https://github.com/fern-tui/fern-core/archive/refs/tags/v0.1.5-beta9.tar.gz
+zig fetch --save https://github.com/fern-tui/fern-core/archive/refs/tags/v0.1.6-beta.14.tar.gz
 ```
 
 Wire it up in `build.zig`:
