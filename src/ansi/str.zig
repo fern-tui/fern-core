@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-// ANSI-safe string manipulation (measuring, truncating, padding).
+//! ANSI-safe string manipulation utilities.
+//!
+//! Provides text measurement, truncation, padding, and layout evaluation
+//! without disrupting embedded ANSI escape sequences.
 
 const std = @import("std");
 const width = @import("width.zig");
@@ -8,7 +11,14 @@ const width = @import("width.zig");
 pub const strWidth = width.strWidth;
 pub const rawWidth = width.rawWidth;
 
-// Allocates a fresh string with all the ANSI garbage stripped out.
+/// Allocates a fresh string with all ANSI escape sequences stripped out.
+///
+/// Parameters:
+///   - s: The source string.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated slice of `u8` containing only the printable text. Caller owns the memory.
 pub fn stripAnsi(s: []const u8, alloc: std.mem.Allocator) ![]u8 {
     // Worst case: no escapes (out len == in len).
     var out: std.ArrayList(u8) = .empty;
@@ -72,9 +82,17 @@ fn skipEscape(s: []const u8, start: usize) usize {
     return i;
 }
 
-// Truncate to max_width cells.
-// Zero allocs if it fits. If it doesn't, we allocate (mostly to handle padding
-// bisected wide chars with a space).
+/// Truncates a string to exactly `max_width` visual cells, preserving ANSI sequences.
+///
+/// If a multi-cell character bisects the cutoff, it is replaced with a single space.
+///
+/// Parameters:
+///   - s: The source string containing optional ANSI sequences.
+///   - max_width: The maximum number of visible terminal cells.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated slice containing the truncated string. Caller owns the memory.
 pub fn truncate(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8 {
     var visible: usize = 0;
     var i: usize = 0;
@@ -115,8 +133,15 @@ pub fn truncate(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8
     return out;
 }
 
-// Right-pads or truncates 's' to fit target_width exactly.
-// Alloc-free if no changes are needed.
+/// Right-pads or truncates a string to fit a target width exactly.
+///
+/// Parameters:
+///   - s: The source string.
+///   - target_width: The strict visible length desired.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated slice matching the exact visual length. Caller owns the memory.
 pub fn pad(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     const w = width.strWidth(s);
     if (w == target_width) {
@@ -134,7 +159,15 @@ pub fn pad(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     return out;
 }
 
-// Left-pads 's' with spaces up to target_width visual cells.
+/// Left-pads a string with spaces up to the targeted visual cell count.
+///
+/// Parameters:
+///   - s: The source string.
+///   - target_width: The minimum visible length desired.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated slice. Caller owns the memory.
 pub fn padLeft(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]u8 {
     const w = width.strWidth(s);
     if (w >= target_width) {
@@ -149,7 +182,14 @@ pub fn padLeft(s: []const u8, target_width: usize, alloc: std.mem.Allocator) ![]
     return out;
 }
 
-// Split 's' on newlines (zero-copy).
+/// Splits a string by newline (`\n`) delimiters.
+///
+/// Parameters:
+///   - s: The source string.
+///   - alloc: Allocator for the resulting array list of strings.
+///
+/// Returns:
+///   An allocated array of string slices. Caller owns the array, but the elements reference `s`.
 pub fn splitLines(s: []const u8, alloc: std.mem.Allocator) ![][]const u8 {
     var lines: std.ArrayList([]const u8) = .empty;
     defer lines.deinit(alloc);
@@ -166,6 +206,7 @@ pub fn splitLines(s: []const u8, alloc: std.mem.Allocator) ![][]const u8 {
     return lines.toOwnedSlice(alloc);
 }
 
+/// Evaluates the total number of physical rows present in a string.
 pub fn lineCount(s: []const u8) usize {
     var count: usize = 1;
     for (s) |b| {
@@ -174,6 +215,7 @@ pub fn lineCount(s: []const u8) usize {
     return count;
 }
 
+/// Determines the visual width of the longest line present in a multi-line string.
 pub fn maxLineWidth(s: []const u8) usize {
     var max: usize = 0;
     var start: usize = 0;
@@ -188,7 +230,17 @@ pub fn maxLineWidth(s: []const u8) usize {
     return max;
 }
 
-// Word-wrap to max_width (breaks on spaces, hard-chops huge words). Allocates the result.
+/// Wraps text to a designated line length dynamically via spaces.
+///
+/// Respects hard breaks. Hard-chops unbreakably long words that exceed `max_width`.
+///
+/// Parameters:
+///   - s: The source string.
+///   - max_width: The column width boundary.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated string with newlines injected safely. Caller owns the memory.
 pub fn wrap(s: []const u8, max_width: usize, alloc: std.mem.Allocator) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
@@ -276,7 +328,15 @@ fn wrapLine(
     }
 }
 
-// Expand tabs to spaces at tab_width intervals.
+/// Expands tab (`\t`) characters into their relative spatial equivalency based on stops.
+///
+/// Parameters:
+///   - s: The source string.
+///   - tab_width: The fixed interval width for tab stops.
+///   - alloc: Allocator for the output slice.
+///
+/// Returns:
+///   An allocated string with spaces substituted. Caller owns the memory.
 pub fn expandTabs(s: []const u8, tab_width: u8, alloc: std.mem.Allocator) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);

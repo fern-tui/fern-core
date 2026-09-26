@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-// Horizontal and vertical block composition.
-// Completely stateless and side-effect free. Every function in here just crunches
-// the layout and returns a freshly allocated []u8. The caller takes full
-// ownership of the memory.
+//! Horizontal and vertical block composition tools.
+//!
+//! Exposes stateless, side-effect-free layout routines. Every function internally
+//! handles padding and alignment based on the provided text, returning a
+//! dynamically allocated slice which the caller takes ownership of.
+
 const std = @import("std");
 const ansi = @import("fern_ansi");
 
-// Pos type and constants
-
+/// Alignment scalar restricted to `[0.0, 1.0]`.
 pub const Pos = f32;
 
-// Position constants.  LEFT and TOP share value 0.0; RIGHT and BOTTOM share 1.0.
 pub const TOP: Pos = 0.0;
 pub const BOTTOM: Pos = 1.0;
 pub const CENTER: Pos = 0.5;
@@ -23,11 +23,15 @@ fn clampPos(p: Pos) Pos {
     return std.math.clamp(p, 0.0, 1.0);
 }
 
-// hstack
-
-// Horizontally joins text blocks.
-// `pos` handles vertical alignment for differing heights (0.0 top, 0.5 center, 1.0 bottom).
-// Bails early on empty/single slices. Always returns a caller-owned []u8.
+/// Horizontally joins an array of text blocks side by side.
+///
+/// Parameters:
+///   - allocator: Controls memory backing the output slice.
+///   - pos: Defines vertical alignment (`0.0` top, `0.5` center, `1.0` bottom) for blocks of varying heights.
+///   - blocks: The array of string blocks to append horizontally.
+///
+/// Returns:
+///   An allocated slice comprising the merged block layout. Caller must free.
 pub fn hstack(
     allocator: std.mem.Allocator,
     pos: Pos,
@@ -59,7 +63,6 @@ pub fn hstack(
     }
 
     // Expand each block to max_height by padding with empty strings.
-    // Allocate a mutable slice of line arrays per block.
     var padded = try allocator.alloc([][]const u8, blocks.len);
     defer {
         for (padded) |p| allocator.free(p);
@@ -107,11 +110,15 @@ pub fn hstack(
     return out.toOwnedSlice(allocator);
 }
 
-// vstack
-
-// Vertically stacks text blocks.
-// `pos` handles horizontal alignment for differing widths (0.0 left, 0.5 center, 1.0 right).
-// Returns a caller-owned []u8.
+/// Vertically joins an array of text blocks top to bottom.
+///
+/// Parameters:
+///   - allocator: Controls memory backing the output slice.
+///   - pos: Defines horizontal alignment (`0.0` left, `0.5` center, `1.0` right) for varying widths.
+///   - blocks: The array of string blocks to append vertically.
+///
+/// Returns:
+///   An allocated slice comprising the merged block layout. Caller must free.
 pub fn vstack(
     allocator: std.mem.Allocator,
     pos: Pos,
@@ -171,11 +178,20 @@ pub fn vstack(
     return out.toOwnedSlice(allocator);
 }
 
-// place
-
-// Place str in a box of box_w x box_h cells.
-// h_pos and v_pos control alignment within the box.
-// Caller owns the returned slice.  Free with allocator.free().
+/// Aligns a string directly within a strictly sized two-dimensional box.
+///
+/// Extends physical bounds combining functionality from both `placeH` and `placeV`.
+///
+/// Parameters:
+///   - allocator: Output memory allocator.
+///   - box_w: Target width in terminal cells.
+///   - box_h: Target height in terminal lines.
+///   - h_pos: Horizontal content anchoring constraints.
+///   - v_pos: Vertical content anchoring constraints.
+///   - str: The payload sequence being structured.
+///
+/// Returns:
+///   An allocated slice formatted perfectly to the parameters. Caller must free.
 pub fn place(
     allocator: std.mem.Allocator,
     box_w: u16,
@@ -189,11 +205,18 @@ pub fn place(
     return placeV(allocator, box_h, v_pos, h);
 }
 
-// placeH
-
-// Pads text to `box_w` cells horizontally.
-// Bails and returns a direct dupe if the content is already too wide (no truncation).
-// Returns a caller-owned []u8.
+/// Pads a string out to exactly `box_w` columns, evaluating `pos` for alignment placement.
+///
+/// Aborts sequence modification if the content exceeds bounds, returning an identical duplicated block.
+///
+/// Parameters:
+///   - allocator: Controls memory allocation.
+///   - box_w: The minimal horizontal column bound target.
+///   - pos: Controls text alignment inside empty space (`0.0`, `0.5`, `1.0`).
+///   - str: Text content to adjust.
+///
+/// Returns:
+///   An allocated padded output string. Caller must free.
 pub fn placeH(
     allocator: std.mem.Allocator,
     box_w: u16,
@@ -220,7 +243,6 @@ pub fn placeH(
 
     for (lines, 0..) |ln, i| {
         const lw: u16 = @intCast(ansi.strWidth(ln));
-        // This line may be shorter than content_w; close that gap too.
         const short: u16 = content_w -| lw;
         const total_gap = gap + short;
 
@@ -247,11 +269,18 @@ pub fn placeH(
     return out.toOwnedSlice(allocator);
 }
 
-// placeV
-
-// Vertically pads text to `box_h` lines.
-// Bails and returns a direct dupe if the content is already too tall (no clipping).
-// Returns a caller-owned []u8.
+/// Pads text out to exactly `box_h` rows, evaluating `pos` for alignment placement.
+///
+/// Aborts sequence modification if the content exceeds bounds, returning an identical duplicated block.
+///
+/// Parameters:
+///   - allocator: Controls memory allocation.
+///   - box_h: The minimal vertical line bound target.
+///   - pos: Controls vertical justification (`0.0`, `0.5`, `1.0`).
+///   - str: Text content to adjust.
+///
+/// Returns:
+///   An allocated padded output string. Caller must free.
 pub fn placeV(
     allocator: std.mem.Allocator,
     box_h: u16,

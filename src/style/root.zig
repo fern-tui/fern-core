@@ -1,38 +1,48 @@
 // SPDX-License-Identifier: MIT
 
-// Public surface of fern/style
+//! Public API surface for fern/style.
+//!
+//! Provides declarative text styling, border rendering, and block layout primitives.
 
-/// box-drawing glyph set for border rendering
+/// Box-drawing glyph set for border rendering.
 pub const Border = @import("border.zig").Border;
 
+/// No border.
 pub const NONE = @import("border.zig").NONE;
+/// Standard single-line box characters.
 pub const NORMAL = @import("border.zig").NORMAL;
+/// Single-line box characters with rounded corners.
 pub const ROUNDED = @import("border.zig").ROUNDED;
+/// Heavy/bold single-line box characters.
 pub const THICK = @import("border.zig").THICK;
+/// Double-line box characters.
 pub const DOUBLE = @import("border.zig").DOUBLE;
+/// Solid block characters on all sides.
 pub const BLOCK = @import("border.zig").BLOCK;
 
-/// half-block chars on the outer edges, no mid fields
+/// Half-block characters on the outer edges (no mid fields).
 pub const OUTER_HALF_BLOCK = @import("border.zig").OUTER_HALF_BLOCK;
 
-/// inner inversion of OUTER_HALF_BLOCK
+/// Inner inversion of OUTER_HALF_BLOCK.
 pub const INNER_HALF_BLOCK = @import("border.zig").INNER_HALF_BLOCK;
 
-/// spaces on all sides - padding without visible lines
+/// Invisible border mapping spaces to all sides for padding.
 pub const HIDDEN = @import("border.zig").HIDDEN;
 
-/// +, -, | fallback for terminals without box-drawing support
+/// ASCII fallback (+, -, |) for terminals without box-drawing support.
 pub const ASCII = @import("border.zig").ASCII;
 
-/// style builder and render pipeline. all setters return a new Style.
+/// Declarative style builder and render pipeline.
+/// All setters return a new, mutated `Style` by value.
 pub const Style = @import("style.zig").Style;
 
-/// underline style enum, mirrors ansi.Attrs.Underline
+/// Underline style enumeration. Mirrors `ansi.Attrs.Underline`.
 pub const Underline = @import("style.zig").Underline;
 
+/// Default amount of spaces a tab character is expanded into.
 pub const TAB_WIDTH_DEFAULT = @import("style.zig").TAB_WIDTH_DEFAULT;
 
-/// f32 alignment in [0.0, 1.0]. use TOP/BOTTOM/LEFT/RIGHT/CENTER.
+/// Floating point alignment bounded to [0.0, 1.0].
 pub const Pos = @import("layout.zig").Pos;
 
 pub const TOP = @import("layout.zig").TOP;
@@ -41,17 +51,17 @@ pub const CENTER = @import("layout.zig").CENTER;
 pub const LEFT = @import("layout.zig").LEFT;
 pub const RIGHT = @import("layout.zig").RIGHT;
 
-/// join blocks side by side. caller owns the result.
+/// Horizontally joins text blocks. Caller owns the resulting string.
 pub const hstack = @import("layout.zig").hstack;
 
-/// join blocks top to bottom. caller owns the result.
+/// Vertically stacks text blocks. Caller owns the resulting string.
 pub const vstack = @import("layout.zig").vstack;
 
-/// place str in a box_w x box_h box (placeH + placeV). caller owns the result.
+/// Places a string in an explicitly sized 2D box. Caller owns the resulting string.
 pub const place = @import("layout.zig").place;
 
-/// place str horizontally within box_w cells. caller owns the result.
+/// Horizontally aligns a string within a specific column width. Caller owns the resulting string.
 pub const placeH = @import("layout.zig").placeH;
 
-/// place str vertically within box_h lines. caller owns the result.
+/// Vertically aligns a string within a specific row height. Caller owns the resulting string.
 pub const placeV = @import("layout.zig").placeV;

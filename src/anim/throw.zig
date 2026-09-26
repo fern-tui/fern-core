@@ -1,38 +1,61 @@
 // SPDX-License-Identifier: MIT
 
-// Linear projectile: Euler integration over a constant acceleration.
+//! Linear projectile implementation.
+//!
+//! Uses Euler integration over a constant acceleration to simulate
+//! basic kinematic motion.
 
 const std = @import("std");
 
-// standard gravity, Y-up (origin bottom-left)
+/// Standard world-space gravity: 9.81 m/s^2 downward, Y-up (origin bottom-left).
 pub const GRAVITY: Vec3 = .{ .x = 0.0, .y = -9.81, .z = 0.0 };
 
-// terminal gravity, Y-down (origin top-left)
+/// Terminal coordinates gravity: 9.81 m/s^2 downward, Y-down (origin top-left).
 pub const TERM_GRAVITY: Vec3 = .{ .x = 0.0, .y = 9.81, .z = 0.0 };
 
+/// 3D point in space.
 pub const Point3 = struct {
     x: f64 = 0.0,
     y: f64 = 0.0,
     z: f64 = 0.0,
 };
 
+/// 3D vector.
 pub const Vec3 = struct {
     x: f64 = 0.0,
     y: f64 = 0.0,
     z: f64 = 0.0,
 };
 
+/// Kinematic state for a moving object under constant acceleration.
 pub const Throw = struct {
     pos: Point3,
     vel: Vec3,
     acc: Vec3,
-    dt: f64, // don't pass 0.0 or negative
+    /// Time step per update in seconds. Must not be zero or negative.
+    dt: f64,
 
+    /// Initializes the projectile simulation.
+    ///
+    /// Parameters:
+    ///   - delta_time: Duration of each update step in seconds. Must be > 0.
+    ///   - pos: Initial position in 3D space.
+    ///   - vel: Initial velocity vector.
+    ///   - acc: Constant acceleration applied each frame.
+    ///
+    /// Returns:
+    ///   A `Throw` instance with the specified starting conditions.
     pub fn init(delta_time: f64, pos: Point3, vel: Vec3, acc: Vec3) Throw {
         return .{ .pos = pos, .vel = vel, .acc = acc, .dt = delta_time };
     }
 
-    // pos before vel so callers see position at frame start
+    /// Advances the simulation by one step of `delta_time`.
+    ///
+    /// Integration evaluates position before velocity, ensuring callers
+    /// observe the correct state at the beginning of the frame.
+    ///
+    /// Returns:
+    ///   The newly calculated position.
     pub fn update(self: *Throw) Point3 {
         self.pos.x += self.vel.x * self.dt;
         self.pos.y += self.vel.y * self.dt;
@@ -45,12 +68,17 @@ pub const Throw = struct {
         return self.pos;
     }
 
+    /// Retrieves the current position.
     pub inline fn position(self: *const Throw) Point3 {
         return self.pos;
     }
+
+    /// Retrieves the current velocity.
     pub inline fn velocity(self: *const Throw) Vec3 {
         return self.vel;
     }
+
+    /// Retrieves the constant acceleration.
     pub inline fn acceleration(self: *const Throw) Vec3 {
         return self.acc;
     }

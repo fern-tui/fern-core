@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-// terminal color types and profile downgrade. no deps.
+//! Terminal color types and profile downsampling.
+//!
+//! Provides perceptual color matching to safely degrade 24-bit true color
+//! into 256-color or 16-color ANSI palettes. Free of dependencies.
 
 const std = @import("std");
 
+/// 24-bit True Color.
 pub const Rgb = struct {
     r: u8,
     g: u8,
     b: u8,
 };
 
+/// ANSI 16-color base palette.
 pub const Ansi16 = enum(u5) {
     black = 0,
     red = 1,
@@ -29,6 +34,7 @@ pub const Ansi16 = enum(u5) {
     bright_white = 15,
 };
 
+/// Specifies the terminal's color rendering capabilities.
 pub const ColorProfile = enum {
     no_color,
     ansi16,
@@ -36,13 +42,20 @@ pub const ColorProfile = enum {
     true_color,
 };
 
+/// Universally represents a terminal color.
 pub const Color = union(enum) {
     none,
     ansi16: Ansi16,
     ansi256: u8,
     rgb: Rgb,
 
-    // comptime only - e.g. Color.hex(0xFF5733)
+    /// Constructs an RGB color from a 24-bit hex literal at compile time.
+    ///
+    /// Parameters:
+    ///   - v: Format is `0xRRGGBB`.
+    ///
+    /// Returns:
+    ///   A `Color` instance storing the extracted RGB components.
     pub fn hex(comptime v: u24) Color {
         return .{ .rgb = .{
             .r = @truncate(v >> 16),
@@ -51,6 +64,13 @@ pub const Color = union(enum) {
         } };
     }
 
+    /// Transforms the color to fit within the specified target profile.
+    ///
+    /// Parameters:
+    ///   - profile: The maximum capability level of the target terminal.
+    ///
+    /// Returns:
+    ///   A downsampled `Color`.
     pub fn downgrade(self: Color, profile: ColorProfile) Color {
         return switch (profile) {
             .no_color => .none,
@@ -68,7 +88,15 @@ pub const Color = union(enum) {
         };
     }
 
-    // downgrades both sides before comparing
+    /// Checks if two colors are perceptually equivalent under a specific profile.
+    ///
+    /// Parameters:
+    ///   - a: First color.
+    ///   - b: Second color.
+    ///   - profile: The evaluation environment constraints.
+    ///
+    /// Returns:
+    ///   `true` if both colors downgrade to the exact same value.
     pub fn eql(a: Color, b: Color, profile: ColorProfile) bool {
         const da = a.downgrade(profile);
         const db = b.downgrade(profile);

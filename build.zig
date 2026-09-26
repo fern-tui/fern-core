@@ -37,9 +37,7 @@ pub fn build(b: *std.Build) void {
     // macOS requires linking libSystem because Apple does not guarantee kernel syscall stability.
     const needs_libc: bool = (target.result.os.tag == .macos);
 
-    ////////////////////
     // Core Sub-Modules
-
     // ANSI parser, CSI escape sequences, terminal detection, and OSC commands
     const ansi_mod = b.addModule("fern_ansi", .{
         .root_source_file = b.path("src/ansi/root.zig"),
@@ -78,7 +76,7 @@ pub fn build(b: *std.Build) void {
     });
     canvas_mod.addImport("fern_ansi", ansi_mod);
 
-    // Runtime runtime engine: Elm/Bubbletea-style event loop, commands, and render diffing
+    // Runtime engine: Elm/Bubbletea-style event loop, commands, and render diffing
     const app_mod = b.addModule("fern_app", .{
         .root_source_file = b.path("src/app/root.zig"),
         .target = target,
@@ -100,19 +98,7 @@ pub fn build(b: *std.Build) void {
     widget_mod.addImport("fern_app", app_mod);
     widget_mod.addImport("fern_anim", anim_mod);
 
-    ////////////////////////////////////
     // Primary Umbrella Module (`fern`)
-    //
-    // Exposes the complete engine as a single ergonomic drop-in dependency:
-    //
-    // In consumer's build.zig:
-    //   exe.root_module.addImport("fern", fern_dep.module("fern"));
-    //
-    // In consumer's code:
-    //   const fern = @import("fern");
-    //   const App  = fern.App;
-    //   const View = fern.widget.Viewport;
-
     const fern_mod = b.addModule("fern", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -127,11 +113,7 @@ pub fn build(b: *std.Build) void {
     fern_mod.addImport("fern_widget", widget_mod);
     if (needs_libc) fern_mod.link_libc = true;
 
-    ////////////////////////////
     // Documentation Generation
-    //
-    // Uses an object artifact to trigger AST doc analysis on the umbrella module
-    // without linking an unnecessary binary to disk.
     const docs_obj = b.addObject(.{
         .name = "fern_docs",
         .root_module = fern_mod,
@@ -146,13 +128,7 @@ pub fn build(b: *std.Build) void {
     const docs_step = b.step("docs", "Generate HTML documentation under zig-out/docs/");
     docs_step.dependOn(&install_docs.step);
 
-    //////////////
     // Test Suite
-    //
-    // Tests are deliberately compiled into individual standalone units rather
-    // than one monolithic runner. This prevents stack-corrupting regressions in one
-    // module from masking subtle failures in independent subsystems.
-
     const test_step = b.step("test", "Run the complete Fern test suite");
 
     const standalone_tests = [_][]const u8{
@@ -208,7 +184,6 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    // sys.zig is isolated to separate OS-level ioctl/termios failures from application logic.
     const test_app_step = b.step("test-app", "Run tests for application runtime and OS layers");
 
     const app_tests = [_]struct {
@@ -275,12 +250,7 @@ pub fn build(b: *std.Build) void {
         test_widget_step.dependOn(&run.step);
     }
 
-    ///////////////////////
     // Example Executables
-    //
-    // Each example is built with the unified `fern` module as well as individual
-    // submodules to maintain seamless backwards compatibility.
-
     const example_configs = [_]struct {
         name: []const u8,
         path: []const u8,
