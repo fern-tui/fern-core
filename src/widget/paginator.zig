@@ -42,7 +42,7 @@ pub const Paginator = struct {
 
     /// Set total_pages from total item count.
     pub fn setTotalPages(self: *Paginator, total_items: usize) void {
-        if (total_items == 0) {
+        if (total_items == 0 or self.per_page == 0) {
             self.total_pages = 1;
             return;
         }
