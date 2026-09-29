@@ -231,6 +231,7 @@ pub fn build(b: *std.Build) void {
         .{ .path = "src/widget/viewport.zig", .needs_style = true, .needs_anim = false, .needs_app = false },
         .{ .path = "src/widget/textinput.zig", .needs_style = true, .needs_anim = false, .needs_app = false },
         .{ .path = "src/widget/table.zig", .needs_style = true, .needs_anim = false, .needs_app = false },
+        .{ .path = "src/widget/list.zig", .needs_style = true, .needs_anim = false, .needs_app = false },
     };
 
     for (widget_tests) |t| {
